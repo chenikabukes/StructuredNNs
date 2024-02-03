@@ -1,6 +1,12 @@
 import torch
 import wandb
 import numpy as np
+import sys
+import os
+
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from strnn.models.strNN import StrNN
 from torch.optim import Optimizer
