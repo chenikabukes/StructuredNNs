@@ -40,70 +40,133 @@ def load_data_and_adj_mtx(dataset_name, adj_mtx_name):
     return train_data, val_data, adj_mtx
 
 
+# def train_loop(
+#     model: StrNN,
+#     optimizer: Optimizer,
+#     train_dl: DataLoader,
+#     val_dl: DataLoader,
+#     max_epoch: int,
+#     patience: int
+# ) -> dict | None:
+#     """
+#     @param model
+#     @param optimizer
+#     @param train_dl: training data loader
+#     @param val_dl: validation data loader
+#     @param max_epoch: maximum epoch allowed for training
+#     @param patience: max number of epochs without validation loss
+#             improvement before terminating
+#     @return: dict of best model state
+#     """
+#     best_model_state = None
+#     best_val = None
+#     counter = 0
+#
+#     for epoch in range(1, max_epoch):
+#         train_losses = []
+#         val_losses = []
+#
+#         for batch in train_dl:
+#             # Training step
+#             optimizer.zero_grad()
+#             x = batch
+#             x_hat, loss = model.get_preds_loss(x)
+#             train_loss = loss.item()
+#
+#             loss.backward()
+#             optimizer.step()
+#
+#             train_losses.append(train_loss)
+#
+#         # Validation step
+#         with torch.no_grad():
+#             for batch in val_dl:
+#                 x = batch
+#                 x_hat, loss = model.get_preds_loss(x)
+#                 val_loss = loss.item()
+#                 val_losses.append(val_loss)
+#
+#             epoch_train_loss = np.mean(train_losses)
+#             epoch_val_loss = np.mean(val_losses)
+#
+#             # TODO: Add scheduler
+#
+#             # wandb logging
+#             wandb.log({
+#                 "train_loss": epoch_train_loss,
+#                 "val_loss": epoch_val_loss
+#             })
+#
+#             if best_val is None or epoch_val_loss < best_val:
+#                 best_val = epoch_val_loss
+#                 best_model_state = model.state_dict()
+#                 counter = 0 # Reset counter since we beat best loss so far
+#             else:
+#                 counter += 1
+#                 if counter > patience:
+#                     return best_model_state
+#
+#     return best_model_state
+
+
 def train_loop(
-    model: StrNN,
-    optimizer: Optimizer,
-    train_dl: DataLoader,
-    val_dl: DataLoader,
-    max_epoch: int,
-    patience: int
-) -> dict | None:
-    """
-    @param model
-    @param optimizer
-    @param train_dl: training data loader
-    @param val_dl: validation data loader
-    @param max_epoch: maximum epoch allowed for training
-    @param patience: max number of epochs without validation loss
-            improvement before terminating
-    @return: dict of best model state
-    """
+    model,
+    optimizer,
+    train_dl,
+    val_dl,
+    max_epoch,
+    patience
+):
     best_model_state = None
-    best_val = None
+    best_val_loss = float('inf')
     counter = 0
 
-    for epoch in range(1, max_epoch):
+    # Initialize lists to track per-epoch loss
+    train_losses_per_epoch = []
+    val_losses_per_epoch = []
+
+    for epoch in range(1, max_epoch + 1):
         train_losses = []
         val_losses = []
 
         for batch in train_dl:
-            # Training step
-            optimizer.zero_grad()
-            x = batch
-            x_hat, loss = model.get_preds_loss(x)
-            train_loss = loss.item()
-
-            loss.backward()
-            optimizer.step()
-
-            train_losses.append(train_loss)
-
-        # Validation step
-        with torch.no_grad():
-            for batch in val_dl:
-                x = batch
+            if isinstance(batch, torch.Tensor):
+                x = batch  # features are the entire batch
+                optimizer.zero_grad()
                 x_hat, loss = model.get_preds_loss(x)
-                val_loss = loss.item()
-                val_losses.append(val_loss)
+                loss.backward()
+                optimizer.step()
+                train_losses.append(loss.item())
 
-            epoch_train_loss = np.mean(train_losses)
-            epoch_val_loss = np.mean(val_losses)
+        with torch.no_grad():
+            for x in val_dl:
+                x_hat, loss = model.get_preds_loss(x)
+                val_losses.append(loss.item())
 
-            # TODO: Add scheduler
+        epoch_train_loss = np.mean(train_losses)
+        epoch_val_loss = np.mean(val_losses)
+        train_losses_per_epoch.append(epoch_train_loss)
+        val_losses_per_epoch.append(epoch_val_loss)
 
-            # wandb logging
-            wandb.log({
-                "train_loss": epoch_train_loss,
-                "val_loss": epoch_val_loss
-            })
+        # Log metrics to wandb
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": epoch_train_loss,
+            "val_loss": epoch_val_loss
+        })
 
-            if best_val is None or epoch_val_loss < best_val:
-                best_val = epoch_val_loss
-                best_model_state = model.state_dict()
-                counter = 0 # Reset counter since we beat best loss so far
-            else:
-                counter += 1
-                if counter > patience:
-                    return best_model_state
+        if epoch_val_loss < best_val_loss:
+            best_val_loss = epoch_val_loss
+            best_model_state = model.state_dict()
+            counter = 0
+        else:
+            counter += 1
+            if counter >= patience:
+                break
 
-    return best_model_state
+    # Return all the metrics collected during training
+    return {
+        "best_model_state": best_model_state,
+        "train_losses_per_epoch": train_losses_per_epoch,
+        "val_losses_per_epoch": val_losses_per_epoch
+    }
