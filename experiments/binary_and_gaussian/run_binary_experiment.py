@@ -116,7 +116,6 @@ args = parser.parse_args()
 #         experiment_config["patience"]
 #     )
 
-
 # def main():
 #     with open("./experiment_config.yaml", "r") as f:
 #         configs = yaml.safe_load(f)
@@ -134,7 +133,6 @@ args = parser.parse_args()
 #
 #     hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 6)]
 #
-#     training_curves = defaultdict(list)
 #     if "binary" in dataset_name:
 #         data_type = "binary"
 #         output_size = input_size
@@ -143,6 +141,13 @@ args = parser.parse_args()
 #         output_size = 2 * input_size
 #     else:
 #         raise ValueError("Data type must be binary or Gaussian!")
+#
+#     run = wandb.init(
+#         project=args.wandb_name,
+#         config=experiment_config,
+#         reinit=True
+#     )
+#     final_val_losses = []
 #
 #     for num_layers in range(1, 10):
 #         hidden_sizes = tuple([h * input_size for h in hidden_size_mults][:num_layers])
@@ -160,33 +165,13 @@ args = parser.parse_args()
 #         )
 #         model.to(device)
 #
-        # def init_weights(m):
-        #     if isinstance(m, torch.nn.Linear):
-        #         torch.nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-        #         m.bias.data.fill_(0.01)
 #
-#         def custom_init_weights(m):
-#             if isinstance(m, torch.nn.Linear):
-#                 torch.nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-#                 m.bias.data.fill_(0.01)
-#                 # Manually adjust weights or biases for certain conditions
-#                 with torch.no_grad():
-#                     m.weight[0, :1] = 1
-#             elif isinstance(m, torch.nn.BatchNorm1d):
-#                 torch.nn.init.constant_(m.weight, 1)
-#                 torch.nn.init.constant_(m.bias, 0)
-#
-#         model.apply(custom_init_weights)
 #
 #         optimizer = AdamW(
 #             model.parameters(),
 #             lr=experiment_config["learning_rate"],
 #             eps=experiment_config["epsilon"],
 #             weight_decay=experiment_config["weight_decay"]
-#         )
-#         run = wandb.init(
-#             project=args.wandb_name,
-#             config=experiment_config
 #         )
 #
 #         results = train_loop(
@@ -198,32 +183,23 @@ args = parser.parse_args()
 #             experiment_config["patience"]
 #         )
 #
-#         # Store training and validation losses for plotting
-#         training_curves['train_loss'].append(results['train_losses_per_epoch'])
-#         training_curves['val_loss'].append(results['val_losses_per_epoch'])
+#         # vanilla strnn and use super sparse, use Kaiming to initialise the weights and then apply mask and calculate the variances.
+#         # - to understand what a normal range of variance will be in very sparse network (should be 1/n for each node)
+#         # how much less than 1.
 #
-#     num_rows = 3
-#     num_cols = 3
+#         run = wandb.run
 #
-#     fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 15))
-#     fig.suptitle('Training and Validation Losses for Different Numbers of Hidden Layers')
+#         # Log training and validation losses to wandb
+#         for epoch in range(len(results['train_losses_per_epoch'])):
+#             wandb.log({
+#                 'Epoch': epoch,
+#                 f'Train Loss {num_layers} Layers': results['train_losses_per_epoch'][epoch],
+#                 f'Validation Loss {num_layers} Layers': results['val_losses_per_epoch'][epoch]
+#             })
 #
-#     axes_flat = axes.flatten()
-#     for i, (train_losses, val_losses) in enumerate(zip(training_curves['train_loss'], training_curves['val_loss'])):
-#         if i >= num_rows * num_cols:
-#             print("More models than subplots available, some models won't be plotted.")
-#             break
-#
-#         ax = axes_flat[i]
-#         ax.plot(train_losses, label='Training Loss')
-#         ax.plot(val_losses, label='Validation Loss')
-#         ax.set_title(f'{i + 1} Hidden Layers')
-#         ax.set_xlabel('Epoch')
-#         ax.set_ylabel('Loss')
-#         ax.legend()
-#
-#     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-#     plt.show()
+#     wandb.finish()
+#     run.finish()
+
 
 def main():
     with open("./experiment_config.yaml", "r") as f:
@@ -242,23 +218,14 @@ def main():
 
     hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 6)]
 
-    if "binary" in dataset_name:
-        data_type = "binary"
-        output_size = input_size
-    elif "gaussian" in dataset_name:
-        data_type = "gaussian"
-        output_size = 2 * input_size
-    else:
-        raise ValueError("Data type must be binary or Gaussian!")
+    data_type = "binary" if "binary" in dataset_name else "gaussian"
+    output_size = input_size if data_type == "binary" else 2 * input_size
 
-    wandb.init(
-        project=args.wandb_name,
-        config=experiment_config,
-        reinit=True
-    )
+    run = wandb.init(project=args.wandb_name, config=experiment_config, reinit=True)
 
+    final_val_losses = []
     for num_layers in range(1, 10):
-        hidden_sizes = tuple([h * input_size for h in hidden_size_mults][:num_layers])
+        hidden_sizes = [h * input_size for h in hidden_size_mults[:num_layers]]
 
         model = StrNNDensityEstimator(
             nin=input_size,
@@ -273,15 +240,12 @@ def main():
         )
         model.to(device)
 
-        # model.apply(init_weights)
-
         optimizer = AdamW(
             model.parameters(),
             lr=experiment_config["learning_rate"],
             eps=experiment_config["epsilon"],
             weight_decay=experiment_config["weight_decay"]
         )
-
 
         results = train_loop(
             model,
@@ -292,37 +256,29 @@ def main():
             experiment_config["patience"]
         )
 
-        # vanilla strnn and use super sparse, use Kaiming, initialise the weights and then apply mask and calculate the variances.
-        # - to understand what a normal range of variance will be in very sparse network ( should be 1/n for each node)
-        # how much less than 1.
+        # train/validation losses
+        fig, ax = plt.subplots()
+        ax.plot(range(len(results['train_losses_per_epoch'])), results['train_losses_per_epoch'], label='Train Loss')
+        ax.plot(range(len(results['val_losses_per_epoch'])), results['val_losses_per_epoch'], label='Validation Loss')
+        ax.set_title(f'Train/Validation Loss for {num_layers} Layers')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Loss')
+        ax.legend()
+        wandb.log({f'Train/Validation Loss for {num_layers} Layers': wandb.Image(fig)})
+        plt.close(fig)
 
-        run = wandb.run
+        final_val_losses.append(results['val_losses_per_epoch'][-1])
 
-        # Log training and validation losses to wandb
-        for epoch in range(len(results['train_losses_per_epoch'])):
-            wandb.log({
-                'Epoch': epoch,
-                f'Train Loss {num_layers} Layers': results['train_losses_per_epoch'][epoch],
-                f'Validation Loss {num_layers} Layers': results['val_losses_per_epoch'][epoch]
-            })
+    # final validation losses over layers
+    fig, ax = plt.subplots()
+    ax.plot(range(1, 10), final_val_losses, marker='o', linestyle='-')
+    ax.set_title('Final Validation Loss Over Layers')
+    ax.set_xlabel('Number of Layers')
+    ax.set_ylabel('Final Validation Loss')
+    wandb.log({'Final Validation Loss Over Layers': wandb.Image(fig)})
+    plt.close(fig)
 
-    run.finish()
-
-# def custom_init_weights(m):
-#     if isinstance(m, torch.nn.Linear):
-#         torch.nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-#         m.bias.data.fill_(0.01)
-#         # Manually adjust weights or biases for certain conditions
-#         with torch.no_grad():
-#             m.weight[0, :1] = 1
-#     elif isinstance(m, torch.nn.BatchNorm1d):
-#         torch.nn.init.constant_(m.weight, 1)
-#         torch.nn.init.constant_(m.bias, 0)
-#
-# def init_weights(m):
-#     if isinstance(m, torch.nn.Linear):
-#         torch.nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-#         m.bias.data.fill_(0.01)
+    wandb.finish()
 
 
 if __name__ == "__main__":
