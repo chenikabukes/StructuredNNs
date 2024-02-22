@@ -11,6 +11,29 @@ import math
 from strnn.models.model_utils import NONLINEARITIES
 
 
+def varying_variance_kaiming_uniform(tensor, fan_in, a=0.0, scale=1.0):
+    """
+    Custom Kaiming uniform initialization with variance scaling.
+    :param tensor: The weight tensor to initialize.
+    :param fan_in: The number of input units in the weight tensor (can be a tensor of scalar values for each output unit).
+    :param a: The negative slope of the rectifier used after this layer (only used with 'leaky_relu').
+    :param scale: The scaling factor for the variance (expected to be a scalar).
+    """
+    with torch.no_grad():
+        nonlinearity = 'leaky_relu'
+        gain = torch.nn.init.calculate_gain(nonlinearity, a)
+
+        if fan_in.numel() == 1:
+            std = gain / torch.sqrt(fan_in).item()
+            bound = math.sqrt(3.0) * std * scale
+            tensor.uniform_(-bound, bound)
+        else:
+            for i, fi in enumerate(fan_in):
+                std = gain / torch.sqrt(fi).item() if fi > 0 else gain
+                bound = math.sqrt(3.0) * std * scale
+                tensor[i].uniform_(-bound, bound)
+
+
 def ian_uniform(
         weights: torch.Tensor,
         bias: torch.Tensor,
@@ -130,21 +153,28 @@ class MaskedLinear(nn.Linear):
         self.ian_init = ian_init
         self.activation = activation
 
-    def reset_parameters_w_masking(self) -> None:
-        """
-        Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
-        same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
-        For details, see https://github.com/pytorch/pytorch/issues/57109
-        """
-        # ian_uniform(
-        #     self.weight, self.bias, self.mask,
-        #     a=math.sqrt(5), nonlinearity=self.activation
-        # )
+    # def reset_parameters_w_masking(self) -> None:
+    #     """
+    #     Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
+    #     same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
+    #     For details, see https://github.com/pytorch/pytorch/issues/57109
+    #     """
+    #     vectorized_ian_uniform(
+    #         self.weight, self.bias, self.mask,
+    #         a=math.sqrt(5), nonlinearity=self.activation
+    #     )
 
-        vectorized_ian_uniform(
-            self.weight, self.bias, self.mask,
-            a=math.sqrt(5), nonlinearity=self.activation
-        )
+    # Uncomment this for varying scale-variance experiment
+    def reset_parameters_w_masking(self, scale=1.0) -> None:
+        """
+        Reset parameters with custom Kaiming uniform initialization considering the mask.
+        :param scale: Scaling factor for the variance of the weights.
+        """
+        fan_in = self.mask.sum(dim=1).clamp(min=1).float()
+        a = math.sqrt(5)
+        varying_variance_kaiming_uniform(self.weight, fan_in, a=a, scale=scale)
+        with torch.no_grad():
+            self.bias.uniform_(-0.01, 0.01)
 
     def set_mask(self, mask: np.ndarray):
         self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
@@ -155,6 +185,21 @@ class MaskedLinear(nn.Linear):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # * is element-wise multiplication in numpy
         return F.linear(input, self.mask * self.weight, self.bias)
+
+
+def get_layer_mask(self, layer_index: int) -> torch.Tensor:
+    """
+    Retrieves the mask for a specified layer.
+
+    :param layer_index: The index of the layer for which the mask is to be retrieved.
+    :return: The mask tensor for the specified layer.
+    """
+    # Iterate through the net_list to find the MaskedLinear layer at the specified index.
+    masked_linear_layers = [layer for layer in self.net_list if isinstance(layer, MaskedLinear)]
+    if 0 <= layer_index < len(masked_linear_layers):
+        return masked_linear_layers[layer_index].mask
+    else:
+        raise IndexError("Layer index out of range.")
 
 
 class StrNN(nn.Module):
@@ -257,6 +302,7 @@ class StrNN(nn.Module):
             masks[-1] = np.concatenate([masks[-1]] * k, axis=1)
         # Set the masks in all MaskedLinear layers
         layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
+        # layers = [l for l in self.net_list if isinstance(l, MaskedLinear)]
         for layer, mask in zip(layers, self.masks):
             layer.set_mask(mask)
 
@@ -415,7 +461,7 @@ if __name__ == '__main__':
             precomputed_masks=None,
             adjacency=A,
             activation='relu',
-            ian_init=True
+            ian_init=False
         )
 
     #     import pdb; pdb.set_trace()

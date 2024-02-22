@@ -1,47 +1,39 @@
 import argparse
 import yaml
-import matplotlib.pyplot as plt
-from collections import defaultdict
-
-import numpy as np
-import re
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-
-from binary_gaussian_train_utils import train_loop, load_data_and_adj_mtx
-from strnn.models.strNNDensityEstimator import StrNNDensityEstimator
-from strnn.models.strNN import MaskedLinear
 import wandb
+import matplotlib.pyplot as plt
+
+from gradient_activation_train_utils import train_loop, load_data_and_adj_mtx
+from strnn.models.strNNDensityEstimator import StrNNDensityEstimator
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+# Argument parsing
 parser = argparse.ArgumentParser("Runs StrNN on synthetic dataset.")
-parser.add_argument("--experiment_name", type=str, default="multimodal")
-parser.add_argument("--data_seed", type=int, default=2547)
-parser.add_argument("--scheduler", type=str, default="plateau")
-parser.add_argument("--model_seed", type=int, default=2647)
-parser.add_argument("--wandb_name", type=str)
+parser.add_argument("--experiment_name", type=str, default="default_experiment")
+parser.add_argument("--wandb_name", type=str, default="default_project")
 
 args = parser.parse_args()
 
-# TODO
+
 def main():
     with open("./experiment_config.yaml", "r") as f:
         configs = yaml.safe_load(f)
     experiment_config = configs[args.experiment_name]
 
+    # Load dataset and adjacency matrix
     dataset_name = experiment_config["dataset_name"]
     adj_mtx_name = experiment_config["adj_mtx_name"]
-    train_data, val_data, adj_mtx = load_data_and_adj_mtx(dataset_name, adj_mtx_name)
-    input_size = len(train_data[0])
-    experiment_config["input_size"] = input_size
+    train_data, val_data, adj_mtx = load_data_and_adj_mtx(
+        dataset_name, adj_mtx_name
+    )
+    input_size = train_data.shape[1]
 
-    batch_size = experiment_config["batch_size"]
-    train_dl = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    val_dl = DataLoader(val_data, batch_size=batch_size, shuffle=False)
-
-    hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 6)]
+    train_dl = DataLoader(train_data, batch_size=experiment_config["batch_size"], shuffle=True)
+    val_dl = DataLoader(val_data, batch_size=experiment_config["batch_size"], shuffle=False)
 
     if "binary" in dataset_name:
         data_type = "binary"
@@ -51,13 +43,14 @@ def main():
         output_size = 2 * input_size
     else:
         raise ValueError("Data type must be binary or Gaussian!")
+    hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 6)]
 
-    run = wandb.init(project=args.wandb_name, config=experiment_config, reinit=True)
-    overall_variances = {}
+    wandb.init(project=args.wandb_name, config=experiment_config)
 
-    for num_layers in range(1, 10):
-        hidden_sizes = [h * input_size for h in hidden_size_mults[:num_layers]]
+    for num_hidden_layers in range(1, 10):
+        hidden_sizes = [h * input_size for h in hidden_size_mults[:num_hidden_layers]]
 
+        # Model initialization
         model = StrNNDensityEstimator(
             nin=input_size,
             hidden_sizes=hidden_sizes,
@@ -79,34 +72,36 @@ def main():
         )
 
         results = train_loop(
-            model,
-            optimizer,
-            train_dl,
-            val_dl,
-            experiment_config["max_epochs"],
-            experiment_config["patience"]
+            model=model,
+            optimizer=optimizer,
+            train_dl=train_dl,
+            val_dl=val_dl,
+            max_epoch=experiment_config["max_epochs"],
+            patience=experiment_config["patience"]
         )
-        total_variance = 0
-        total_elements = 0
 
-        for idx, layer in enumerate(model.net_list):
-            if isinstance(layer, MaskedLinear):
-                layer_variance = torch.var(layer.weight.data * layer.mask).item()
-                total_variance += layer_variance * layer.mask.numel()
-                total_elements += layer.mask.numel()  # total num elements in the tensor
-
-        # Calculate the overall variance for the current model configuration (with x num_layers)
-        if total_elements > 0:
-            overall_variance = total_variance / total_elements
-            overall_variances[num_layers] = overall_variance
-
-    variance_table = wandb.Table(columns=['Model Configuration', 'Overall Weight Variance'])
-    for num_layers, variance in overall_variances.items():
-        variance_table.add_data(f"{num_layers} Layers", variance)
-    wandb.log({"Overall Variance by Num Layers": variance_table})
+        log_metrics_to_wandb(results, num_hidden_layers)
 
     wandb.finish()
 
 
-if __name__ == "__main__":
+def log_metrics_to_wandb(results, num_hidden_layers):
+    fig, ax = plt.subplots()
+
+    epochs = list(range(1, len(results["gradient_norms_per_epoch"]) + 1))
+    ax.plot(epochs, results["gradient_norms_per_epoch"], label="Gradient Norm", color='tab:green')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Gradient Norm')
+    ax.tick_params(axis='y')
+    ax.legend(loc='upper right')
+
+    plt.title(f'Gradient Norms for Network with {num_hidden_layers} Hidden Layers')
+    plt.tight_layout()
+
+    wandb.log({f"Gradient Norms for {num_hidden_layers} Hidden Layers": wandb.Image(fig)})
+
+    plt.close(fig)
+
+
+if __name__ == '__main__':
     main()

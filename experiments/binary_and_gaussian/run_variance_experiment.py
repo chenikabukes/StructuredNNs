@@ -103,10 +103,25 @@ def main():
         overall_variance = total_variance / total_elements if total_elements > 0 else 0
         overall_variances[num_layers] = overall_variance
 
-    variance_table = wandb.Table(columns=['Model Configuration', 'Overall Weight Variance'])
-    for num_layers, variance in overall_variances.items():
-        variance_table.add_data(f"{num_layers} Layers", variance)
-    wandb.log({"Overall Variance by Num Layers": variance_table})
+    # Now that we've collected variances for each model configuration, let's plot them
+    num_layers_list = list(overall_variances.keys())
+    variances_list = list(overall_variances.values())
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(num_layers_list, variances_list, marker='o')
+    plt.title('Model Variance as a Function of Number of Hidden Layers')
+    plt.xlabel('Number of Hidden Layers')
+    plt.ylabel('Average Variance per Weight')
+    plt.grid(False)
+    plt.tight_layout()
+
+    # Save the plot to a file that can be uploaded to wandb
+    plot_filename = 'variance_vs_layers.png'
+    plt.savefig(plot_filename)
+    plt.close()
+
+    # Log the plot to Weights & Biases
+    wandb.log({"Variance vs Number of Hidden Layers": wandb.Image(plot_filename)})
 
     wandb.finish()
 

@@ -14,3 +14,5 @@ def generate_adj_mat_uniform(data_dim: int, threshold: float) -> np.ndarray:
     A = (A > threshold).astype(int)
     A = np.tril(A, -1)
     return A
+
+

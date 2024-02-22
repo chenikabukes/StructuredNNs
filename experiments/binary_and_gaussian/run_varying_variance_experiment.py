@@ -56,7 +56,6 @@ def main():
 
     variance_scales = [1, 2, 5, 10, 20]
     val_losses = []
-    variances = []
 
     num_layers = experiment_config["num_hidden_layers"]
     hidden_sizes = [h * input_size for h in hidden_size_mults[:num_layers]]
@@ -74,18 +73,17 @@ def main():
     )
     model.to(device)
 
-    optimizer = AdamW(
-        model.parameters(),
-        lr=experiment_config["learning_rate"],
-        eps=experiment_config["epsilon"],
-        weight_decay=experiment_config["weight_decay"]
-    )
-    layer_variances = {}
     for scale in variance_scales:
-        # Reinitialize the weights with varying variance
         for idx, layer in enumerate(model.net_list):
             if isinstance(layer, MaskedLinear):
                 layer.reset_parameters_w_masking(scale=scale)
+
+        optimizer = AdamW(
+            model.parameters(),
+            lr=experiment_config["learning_rate"],
+            eps=experiment_config["epsilon"],
+            weight_decay=experiment_config["weight_decay"]
+        )
 
         results = train_loop(
             model,
@@ -97,36 +95,23 @@ def main():
         )
         final_val_loss = results['val_losses_per_epoch'][-1]
         val_losses.append(final_val_loss)
-        total_variance = 0
-        total_elements = 0
-        for idx, layer in enumerate(model.net_list):
-            if isinstance(layer, MaskedLinear):
-                # Apply mask to the weights
-                masked_weights = layer.weight.data * layer.mask
-                # Find non-zero elements after applying the mask
-                non_zero_elements = masked_weights[masked_weights != 0]
-                # Then compute variance for non-zero elements
-                if non_zero_elements.numel() > 0:
-                    layer_variance = torch.var(non_zero_elements).item()
-                    # Update total variance and total elements count
-                    total_variance += layer_variance * non_zero_elements.numel()
-                    total_elements += non_zero_elements.numel()
-
-        overall_variance = total_variance / total_elements if total_elements > 0 else 0
-        variances.append(overall_variance)
 
     fig, ax = plt.subplots()
-    ax.plot(variances, val_losses, marker='o', linestyle='-', color='b')
-    ax.set_title('Validation Loss over Layer Variance')
-    ax.set_xlabel('Layer Variance')
-    ax.set_ylabel('Validation Loss')
-    wandb.log({"Validation Loss over Layer Variance": wandb.Image(fig)})
+    ax.plot(variance_scales, val_losses, marker='o', linestyle='-', color='b')
+    ax.set_title('Validation Loss over Scalar Multipliers of Initial Variance')
+    ax.set_xlabel('Scalar Multiplier of Initial Variance')
+    ax.set_ylabel('Final Validation Loss')
+    plt.grid(False)
+    plt.tight_layout()
 
-    variance_table = wandb.Table(columns=['Scalar Multiplier of Variance in Kaiming Init', 'Overall Variance'])
-    for scale, overall_variance in zip(variance_scales, variances):
-        variance_table.add_data(scale, overall_variance)
-    wandb.log({"Overall Variance by Scalar Multiplier": variance_table})
+    # Log the plot to Weights & Biases
+    plot_filename = 'variance_scale_vs_val_loss.png'
+    plt.savefig(plot_filename)
+    plt.close()
 
+    wandb.log({"Validation Loss over Scalar Multipliers of Initial Variance": wandb.Image(plot_filename)})
+
+    # End the Weights & Biases run
     wandb.finish()
 
 

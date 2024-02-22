@@ -3,26 +3,28 @@
 
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 import numpy as np
 from strnn.models.strNN import StrNN
 from numpy.random import binomial
-
+from strnn.models.strNN import MaskedLinear
+from strnn.models.model_utils import NONLINEARITIES
 
 SUPPORTED_DATA_TYPES = ['binary', 'gaussian']
 
 
 class StrNNDensityEstimator(StrNN):
     def __init__(self,
-         nin: int,
-         hidden_sizes: tuple[int, ...],
-         nout: int,
-         opt_type: str = 'greedy',
-         opt_args: dict = {'var_penalty_weight': 0.0},
-         precomputed_masks: np.ndarray | None = None,
-         adjacency: np.ndarray | None = None,
-         activation: str = 'relu',
-         data_type: str = 'binary'
-    ):
+                 nin: int,
+                 hidden_sizes: tuple[int, ...],
+                 nout: int,
+                 opt_type: str = 'greedy',
+                 opt_args: dict = {'var_penalty_weight': 0.0},
+                 precomputed_masks: np.ndarray | None = None,
+                 adjacency: np.ndarray | None = None,
+                 activation: str = 'relu',
+                 data_type: str = 'binary'
+                 ):
         super().__init__(
             nin, hidden_sizes, nout, opt_type, opt_args,
             precomputed_masks, adjacency, activation
@@ -32,6 +34,16 @@ class StrNNDensityEstimator(StrNN):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
+
+    # def forward(self, x, return_layer_outputs=False):
+    #     layer_outputs = {}
+    #     for name, layer in self.net.named_children():
+    #         x = layer(x)
+    #         if return_layer_outputs:
+    #             layer_outputs[name] = x
+    #     if return_layer_outputs:
+    #         return layer_outputs
+    #     return x
 
     def compute_LL(self, x, x_hat):
         """
@@ -94,4 +106,3 @@ if __name__ == '__main__':
         adjacency=A,
         activation='relu')
     print(model.A)
-
