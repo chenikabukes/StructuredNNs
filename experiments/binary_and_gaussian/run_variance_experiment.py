@@ -41,7 +41,7 @@ def main():
     train_dl = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_dl = DataLoader(val_data, batch_size=batch_size, shuffle=False)
 
-    hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 6)]
+    hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 10)]
 
     if "binary" in dataset_name:
         data_type = "binary"
@@ -53,11 +53,12 @@ def main():
         raise ValueError("Data type must be binary or Gaussian!")
 
     run = wandb.init(project=args.wandb_name, config=experiment_config, reinit=True)
-    overall_variances = {}
+
+    overall_results = defaultdict(dict)
 
     for num_layers in range(1, 10):
         hidden_sizes = [h * input_size for h in hidden_size_mults[:num_layers]]
-
+        # print(hidden_sizes)
         model = StrNNDensityEstimator(
             nin=input_size,
             hidden_sizes=hidden_sizes,
@@ -78,7 +79,7 @@ def main():
             weight_decay=experiment_config["weight_decay"]
         )
 
-        results = train_loop(
+        train_loop(
             model,
             optimizer,
             train_dl,
@@ -86,44 +87,43 @@ def main():
             experiment_config["max_epochs"],
             experiment_config["patience"]
         )
-        total_variance = 0
-        total_elements = 0
 
-        for _, layer in enumerate(model.net_list):
+        layer_variances = []
+        for layer_idx, layer in enumerate(model.net_list[:-1]):
             if isinstance(layer, MaskedLinear):
                 masked_weights = layer.weight.data * layer.mask
+                non_zero_count = torch.count_nonzero(masked_weights)
                 non_zero_elements = masked_weights[masked_weights != 0]
-
+                # print("Original weight size:", layer.weight.data.size())
+                # print("Mask size:", layer.mask.size() )
+                # print("Masked weights size:", masked_weights.size())
+                # print("Non zero elements list size:", non_zero_elements.size())
                 if non_zero_elements.numel() > 0:
                     layer_variance = torch.var(non_zero_elements).item()
-                    total_variance += layer_variance * non_zero_elements.numel()
-                    total_elements += non_zero_elements.numel()
+                    # Normalize variance by the size multiplier for that layer
+                    normalized_variance = layer_variance / hidden_size_mults[
+                        layer_idx // 2]  # Adjusted for every second layer being MaskedLinear
+                    half_n_vw = 0.5 * non_zero_elements.numel() * normalized_variance
+                    layer_variances.append(half_n_vw)
 
-        # Calculate the overall variance for the current model configuration (with x num_layers)
-        overall_variance = total_variance / total_elements if total_elements > 0 else 0
-        overall_variances[num_layers] = overall_variance
+        # Plotting the results for the current model
+        plt.figure(figsize=(10, 5))
+        plt.scatter(range(1, len(layer_variances) + 1), layer_variances)
+        plt.title(f'1/2 n V[w] for {num_layers}-layer model')
+        plt.xlabel('Layer index')
+        plt.ylabel(r'$\frac{1}{2} n V[w]$')
+        plt.xticks(range(1, len(layer_variances) + 1))
+        plt.yticks(range(-1, 5))
+        plt.ylim(-1, 5)
+        plt.grid(True)
+        plt.tight_layout()
 
-    # Now that we've collected variances for each model configuration, let's plot them
-    num_layers_list = list(overall_variances.keys())
-    variances_list = list(overall_variances.values())
+        plot_filename = f'half_n_vw_{num_layers}_layers.png'
+        plt.savefig(plot_filename)
+        plt.close()
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(num_layers_list, variances_list, marker='o')
-    plt.title('Model Variance as a Function of Number of Hidden Layers')
-    plt.xlabel('Number of Hidden Layers')
-    plt.ylabel('Average Variance per Weight')
-    plt.grid(False)
-    plt.tight_layout()
-
-    # Save the plot to a file that can be uploaded to wandb
-    plot_filename = 'variance_vs_layers.png'
-    plt.savefig(plot_filename)
-    plt.close()
-
-    # Log the plot to Weights & Biases
-    wandb.log({"Variance vs Number of Hidden Layers": wandb.Image(plot_filename)})
-
-    wandb.finish()
+        # Log the plot to wandb
+        wandb.log({f"Half n V[w] for {num_layers}-layer model": wandb.Image(plot_filename)})
 
 
 if __name__ == "__main__":

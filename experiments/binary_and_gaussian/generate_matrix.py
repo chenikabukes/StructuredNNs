@@ -10,7 +10,7 @@ import tensorflow_datasets as tfds
 # Data should be numpy arrays of shape [number of data points, data dimensions]
 
 NUM_TEST_SAMPLES = 500
-RANDOM_THRESHOLD = {'fullyconnected': 0.0,'dense': 0.4, 'medium': 0.6, 'sparse': 0.9, 'verysparse': 0.95}
+RANDOM_THRESHOLD = {'fullyconnected': 0.0, 'dense': 0.4, 'medium': 0.6, 'sparse': 0.9, 'verysparse': 0.95}
 
 
 class DataGenerator():
@@ -303,9 +303,9 @@ def subsample_MNIST(samples):
 if __name__ == '__main__':
     # Initialize the DataGenerator
     gen = DataGenerator()
-    adj_type = 'random_dense'
-    data_dim = 15
+    adj_type = 'random_fullyconnected'
+    data_dim = 100
     very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
-    np.savez(f"./synth_data_files/dense_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
+    np.savez(f"./synth_data_files/fully_connected_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
     sample_sizes = (5000, 4000, 3000, 2000, 1000)
     gen.generate_data_group(data_type='binary', adj_type=adj_type, data_dim=data_dim, sample_sizes=sample_sizes)

@@ -218,7 +218,7 @@ class StrNN(nn.Module):
             precomputed_masks: np.ndarray | None = None,
             adjacency: np.ndarray | None = None,
             activation: str = 'relu',
-            ian_init: bool = False
+            ian_init: bool = True
     ):
         """
         Initializes a Structured Neural Network (StrNN)
@@ -461,7 +461,7 @@ if __name__ == '__main__':
             precomputed_masks=None,
             adjacency=A,
             activation='relu',
-            ian_init=False
+            ian_init=True
         )
 
     #     import pdb; pdb.set_trace()
