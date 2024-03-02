@@ -72,22 +72,6 @@ def main():
         )
         model.to(device)
 
-        optimizer = AdamW(
-            model.parameters(),
-            lr=experiment_config["learning_rate"],
-            eps=experiment_config["epsilon"],
-            weight_decay=experiment_config["weight_decay"]
-        )
-
-        train_loop(
-            model,
-            optimizer,
-            train_dl,
-            val_dl,
-            experiment_config["max_epochs"],
-            experiment_config["patience"]
-        )
-
         layer_variances = []
         for layer_idx, layer in enumerate(model.net_list[:-1]):
             if isinstance(layer, MaskedLinear):
@@ -105,6 +89,22 @@ def main():
                         layer_idx // 2]  # Adjusted for every second layer being MaskedLinear
                     half_n_vw = 0.5 * non_zero_elements.numel() * normalized_variance
                     layer_variances.append(half_n_vw)
+
+        optimizer = AdamW(
+            model.parameters(),
+            lr=experiment_config["learning_rate"],
+            eps=experiment_config["epsilon"],
+            weight_decay=experiment_config["weight_decay"]
+        )
+
+        train_loop(
+            model,
+            optimizer,
+            train_dl,
+            val_dl,
+            experiment_config["max_epochs"],
+            experiment_config["patience"]
+        )
 
         # Plotting the results for the current model
         plt.figure(figsize=(10, 5))
