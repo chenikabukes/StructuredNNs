@@ -118,7 +118,7 @@ def main():
     fig, ax = plt.subplots()
     ax.plot(range(1, 10), final_val_losses_ian, marker='o', linestyle='-', label='Ian Init')
     ax.plot(range(1, 10), final_val_losses_kaiming, marker='o', linestyle='-', label='Kaiming Init')
-    ax.set_title('Final Validation Loss Over Layers (d100 very_sparse)')
+    ax.set_title('Final Validation Loss Over Layers (d100)')
     ax.set_xlabel('Number of Layers')
     ax.set_ylabel('Final Validation Loss')
     ax.legend()
