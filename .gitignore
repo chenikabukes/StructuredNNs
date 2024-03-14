@@ -17,6 +17,7 @@ parts/
 sdist/
 var/
 myenv/
+experiments/binary_and_gaussian/synth_data_files/mnist
 *.egg-info/
 .installed.cfg
 *.egg
