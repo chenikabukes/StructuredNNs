@@ -26,6 +26,7 @@ parser.add_argument("--wandb_name", type=str)
 
 args = parser.parse_args()
 
+
 #
 # def main():
 #     with open("./experiment_config.yaml", "r") as f:
@@ -151,7 +152,7 @@ def main():
 
     run = wandb.init(project=args.wandb_name, config=experiment_config, reinit=True)
 
-    num_runs = 5
+    num_runs = 100
     final_val_losses_ian = defaultdict(list)
     final_val_losses_kaiming = defaultdict(list)
 
@@ -235,10 +236,18 @@ def main():
     ci_kaiming = stats.sem(final_val_losses_kaiming_list, axis=1) * stats.t.ppf((1 + 0.95) / 2, len(
         final_val_losses_kaiming_list[0]) - 1)
 
-    # Plotting with confidence intervals
+    # Plotting with confidence intervals as bands
     fig, ax = plt.subplots()
-    ax.errorbar(range(1, 10), mean_ian, yerr=ci_ian, marker='o', linestyle='-', label='Ian Init')
-    ax.errorbar(range(1, 10), mean_kaiming, yerr=ci_kaiming, marker='o', linestyle='-', label='Kaiming Init')
+
+    # Plot the mean line for Ian Init and Kaiming Init
+    ax.plot(range(1, 10), mean_ian, marker='o', linestyle='-', label='Ian Init', color='blue')
+    ax.plot(range(1, 10), mean_kaiming, marker='o', linestyle='-', label='Kaiming Init', color='green')
+
+    # Create the confidence bands for Ian Init
+    ax.fill_between(range(1, 10), mean_ian - ci_ian, mean_ian + ci_ian, color='blue', alpha=0.2)
+
+    # Create the confidence bands for Kaiming Init
+    ax.fill_between(range(1, 10), mean_kaiming - ci_kaiming, mean_kaiming + ci_kaiming, color='green', alpha=0.2)
 
     ax.set_title('Final Validation Loss Over Layers (d100) with 95% CI')
     ax.set_xlabel('Number of Layers')
@@ -248,6 +257,7 @@ def main():
     plt.close(fig)
 
     wandb.finish()
+
 
 if __name__ == "__main__":
     main()
