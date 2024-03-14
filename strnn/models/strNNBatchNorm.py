@@ -72,7 +72,7 @@ class MaskedLinear(nn.Linear):
         self.ian_init = ian_init
         self.activation = activation
 
-    def reset_parameters_w_masking(self, scale) -> None:
+    def reset_parameters_w_masking(self) -> None:
         """
         Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
         same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).

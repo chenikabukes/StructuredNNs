@@ -20,14 +20,15 @@ class StrNNDensityEstimatorNormalisation(StrNNBatchNorm):
                  precomputed_masks: np.ndarray | None = None,
                  adjacency: np.ndarray | None = None,
                  activation: str = 'relu',
-                 data_type: str = 'binary'
+                 data_type: str = 'binary',
+                 ian_init: bool = 'True'
                  ):
         assert data_type in SUPPORTED_DATA_TYPES
         self.data_type = data_type
 
         super().__init__(
             nin, hidden_sizes, nout, opt_type, opt_args,
-            precomputed_masks, adjacency, activation
+            precomputed_masks, adjacency, activation, ian_init
         )
 
         # Adding batch/layer normalization layers directly in the net_list
@@ -107,5 +108,7 @@ if __name__ == '__main__':
         opt_args={'var_penalty_weight': 0.0},
         precomputed_masks=None,
         adjacency=A,
-        activation='relu')
+        activation='relu',
+        ian_init=True
+    )
     print(model.A)
