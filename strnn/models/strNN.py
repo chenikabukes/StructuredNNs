@@ -1,4 +1,5 @@
 import os
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 import torch
 import torch.nn as nn
@@ -8,6 +9,29 @@ import warnings
 import math
 
 from strnn.models.model_utils import NONLINEARITIES
+
+
+def varying_variance_kaiming_uniform(tensor, fan_in, a=0.0, scale=1.0):
+    """
+    Custom Kaiming uniform initialization with variance scaling.
+    :param tensor: The weight tensor to initialize.
+    :param fan_in: The number of input units in the weight tensor (can be a tensor of scalar values for each output unit).
+    :param a: The negative slope of the rectifier used after this layer (only used with 'leaky_relu').
+    :param scale: The scaling factor for the variance (expected to be a scalar).
+    """
+    with torch.no_grad():
+        nonlinearity = 'leaky_relu'
+        gain = torch.nn.init.calculate_gain(nonlinearity, a)
+
+        if fan_in.numel() == 1:
+            std = gain / torch.sqrt(fan_in).item()
+            bound = math.sqrt(3.0) * std * scale
+            tensor.uniform_(-bound, bound)
+        else:
+            for i, fi in enumerate(fan_in):
+                std = gain / torch.sqrt(fi).item() if fi > 0 else gain
+                bound = math.sqrt(3.0) * std * scale
+                tensor[i].uniform_(-bound, bound)
 
 
 def ian_uniform(
@@ -41,6 +65,7 @@ def ian_uniform(
     # Compute fan_in based on mask
     fan_ins = mask.sum(dim=1)
 
+    # Try multiplying with number
     # Compute other quantities as in Kaiming uniform
     gain = torch.nn.init.calculate_gain(nonlinearity, a)
 
@@ -67,10 +92,51 @@ def ian_uniform(
     return weights, bias
 
 
+def vectorized_ian_uniform(weights: torch.Tensor,
+                           bias: torch.Tensor,
+                           mask: torch.Tensor,
+                           a: float = 0,
+                           nonlinearity: str = 'leaky_relu'
+                           ) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Fills the input weights with values based on Kaiming uniform initialization
+    (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_)
+    but takes into account the number of fan_ins that are masked in StrNN
+
+    :param tensor: weight tensor to be filled
+    :param mask: weight mask for this layer
+    :param
+    """
+    # Ensuring non-zero fan-in
+    fan_ins = mask.sum(dim=1).clamp(min=1)
+
+    # Note a parameter is only necessary for leaky_relu non-linearity
+    gain = torch.nn.init.calculate_gain(nonlinearity, a)
+
+    # Compute standard deviation for weights
+    std = gain / torch.sqrt(fan_ins)
+
+    # Compute bounds for uniform distribution
+    bounds = std * math.sqrt(3.0)
+
+    # Apply uniform initialization row-wise to handle varying bounds
+    with torch.no_grad():
+        for i, bound in enumerate(bounds):
+            weights[i].uniform_(-bound.item(), bound.item())
+
+    # Simplified bias initialization
+    with torch.no_grad():
+        bias.uniform_(-0.01, 0.01)
+
+    return weights, bias
+
+
 class MaskedLinear(nn.Linear):
     """
     A linear neural network layer, except with a configurable
     binary mask on the weights
+
+    It also has binary mask multiplied element wise to the weights
     """
     mask: torch.Tensor
 
@@ -93,10 +159,22 @@ class MaskedLinear(nn.Linear):
         same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
         For details, see https://github.com/pytorch/pytorch/issues/57109
         """
-        ian_uniform(
+        vectorized_ian_uniform(
             self.weight, self.bias, self.mask,
             a=math.sqrt(5), nonlinearity=self.activation
         )
+
+    # Uncomment this for varying scale-variance experiment
+    # def reset_parameters_w_masking(self, scale=1.0) -> None:
+    #     """
+    #     Reset parameters with custom Kaiming uniform initialization considering the mask.
+    #     :param scale: Scaling factor for the variance of the weights.
+    #     """
+    #     fan_in = self.mask.sum(dim=1).clamp(min=1).float()
+    #     a = math.sqrt(5)
+    #     varying_variance_kaiming_uniform(self.weight, fan_in, a=a, scale=scale)
+    #     with torch.no_grad():
+    #         self.bias.uniform_(-0.01, 0.01)
 
     def set_mask(self, mask: np.ndarray):
         self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
@@ -109,22 +187,38 @@ class MaskedLinear(nn.Linear):
         return F.linear(input, self.mask * self.weight, self.bias)
 
 
+def get_layer_mask(self, layer_index: int) -> torch.Tensor:
+    """
+    Retrieves the mask for a specified layer.
+
+    :param layer_index: The index of the layer for which the mask is to be retrieved.
+    :return: The mask tensor for the specified layer.
+    """
+    # Iterate through the net_list to find the MaskedLinear layer at the specified index.
+    masked_linear_layers = [layer for layer in self.net_list if isinstance(layer, MaskedLinear)]
+    if 0 <= layer_index < len(masked_linear_layers):
+        return masked_linear_layers[layer_index].mask
+    else:
+        raise IndexError("Layer index out of range.")
+
+
 class StrNN(nn.Module):
     """
     Main neural network class that implements a Structured Neural Network
     Can also become a MADE or Zuko masked NN by specifying the opt_type flag
     """
+
     def __init__(
-        self,
-        nin: int,
-        hidden_sizes: tuple[int, ...],
-        nout: int,
-        opt_type: str = 'greedy',
-        opt_args: dict = {'var_penalty_weight': 0.0},
-        precomputed_masks: np.ndarray | None = None,
-        adjacency: np.ndarray | None = None,
-        activation: str = 'relu',
-        ian_init: bool = False
+            self,
+            nin: int,
+            hidden_sizes: tuple[int, ...],
+            nout: int,
+            opt_type: str = 'greedy',  # algorithm 1
+            opt_args: dict = {'var_penalty_weight': 0.0},
+            precomputed_masks: np.ndarray | None = None,
+            adjacency: np.ndarray | None = None,
+            activation: str = 'relu',
+            ian_init: bool = True
     ):
         """
         Initializes a Structured Neural Network (StrNN)
@@ -208,6 +302,7 @@ class StrNN(nn.Module):
             masks[-1] = np.concatenate([masks[-1]] * k, axis=1)
         # Set the masks in all MaskedLinear layers
         layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
+        # layers = [l for l in self.net_list if isinstance(l, MaskedLinear)]
         for layer, mask in zip(layers, self.masks):
             layer.set_mask(mask)
 
@@ -244,9 +339,9 @@ class StrNN(nn.Module):
         return masks
 
     def factorize_single_mask_greedy(
-        self,
-        adj_mtx: np.ndarray,
-        n_hidden: int
+            self,
+            adj_mtx: np.ndarray,
+            n_hidden: int
     ) -> (np.ndarray, np.ndarray):
         """
         Factorize adj_mtx into M1 * M2
@@ -294,8 +389,8 @@ class StrNN(nn.Module):
         return masks
 
     def factorize_masks_zuko(
-        self,
-        hidden_sizes: tuple[int]
+            self,
+            hidden_sizes: tuple[int]
     ) -> list[np.ndarray]:
         masks = []
 
@@ -368,9 +463,11 @@ if __name__ == '__main__':
             activation='relu',
             ian_init=True
         )
-        import pdb; pdb.set_trace()
+
+    #     import pdb; pdb.set_trace()
     except:
         import sys, pdb, traceback
+
         extype, value, tb = sys.exc_info()
         traceback.print_exc()
         pdb.post_mortem(tb)

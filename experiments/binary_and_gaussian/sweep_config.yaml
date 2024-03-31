@@ -1,0 +1,31 @@
+program: mnist_sweep.py
+method: random
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  learning_rate:
+    min: 0.001
+    max: 0.2
+  hidden_size_multiplier_1:
+    values: [1, 2, 4, 8, 12, 16, 20, 30, 50]
+  hidden_size_multiplier_2:
+    values: [1, 2, 4, 8, 12, 16, 20, 30, 50]
+  hidden_size_multiplier_3:
+    values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  hidden_size_multiplier_4:
+    values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  hidden_size_multiplier_5:
+    values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  hidden_size_multiplier_6:
+    values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  hidden_size_multiplier_7:
+    values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  hidden_size_multiplier_8:
+      values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  hidden_size_multiplier_9:
+    values: [ 1, 2, 4, 8, 12, 16, 20, 30, 50 ]
+  num_hidden_layers:
+    values: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  weight_decay:
+    values: [0.0001, 0.001, 0.01]
