@@ -10,6 +10,63 @@ import math
 
 from strnn.models.model_utils import NONLINEARITIES
 
+def ian_uniform(
+        weights: torch.Tensor,
+        bias: torch.Tensor,
+        mask: torch.Tensor,
+        a: float = 0,
+        nonlinearity: str = 'leaky_relu'
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Fills the input weights with values based on Kaiming uniform initialization
+    (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_)
+    but takes into account the number of fan_ins that are masked in StrNN
+
+    :param tensor: weight tensor to be filled
+    :param mask: weight mask for this layer
+    :param
+    """
+    if torch.overrides.has_torch_function_variadic(weights):
+        return torch.overrides.handle_torch_function(
+            ian_uniform,
+            (weights,),
+            tensor=weights,
+            a=a,
+            nonlinearity=nonlinearity)
+
+    if 0 in weights.shape or 0 in bias.shape:
+        warnings.warn("In ian_uniform: weights or bias cannot be 0-dimensional!")
+        return weights, bias
+
+    # Compute fan_in based on mask
+    fan_ins = mask.sum(dim=1)
+
+    # Try multiplying with number
+    # Compute other quantities as in Kaiming uniform
+    gain = torch.nn.init.calculate_gain(nonlinearity, a)
+
+    # Update weights
+    i = 0
+    for row in weights:
+        fan_in = fan_ins[i]
+        std = gain / math.sqrt(fan_in) if fan_in > 0 else gain
+        bound = math.sqrt(3.0) * std
+
+        with torch.no_grad():
+            row.uniform_(-bound, bound)
+        i += 1
+
+    # Update bias similarly
+    i = 0
+    for b in bias:
+        fan_in = fan_ins[i]
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        with torch.no_grad():
+            b.uniform_(-bound, bound)
+        i += 1
+
+    return weights, bias
+
 
 def vectorized_ian_uniform(weights: torch.Tensor,
                            bias: torch.Tensor,
@@ -45,9 +102,30 @@ def vectorized_ian_uniform(weights: torch.Tensor,
 
     # Simplified bias initialization
     with torch.no_grad():
-        bias.uniform_(-0.01, 0.01)
+        bias.zero_()
 
     return weights, bias
+
+    # if torch.overrides.has_torch_function_variadic(tensor):
+    #     return torch.overrides.handle_torch_function(
+    #         kaiming_uniform_,
+    #         (tensor,),
+    #         tensor=tensor,
+    #         a=a,
+    #         mode=mode,
+    #         nonlinearity=nonlinearity,
+    #         generator=generator)
+    #
+    # if 0 in tensor.shape:
+    #     warnings.warn("Initializing zero-element tensors is a no-op")
+    #     return tensor
+    # fan = _calculate_correct_fan(tensor, mode)
+    # gain = calculate_gain(nonlinearity, a)
+    # std = gain / math.sqrt(fan)
+    # bound = math.sqrt(3.0) * std  # Calculate uniform bounds from standard deviation
+    # with torch.no_grad():
+    #     return tensor.uniform_(-bound, bound, generator=generator)
+
 
 
 class MaskedLinear(nn.Linear):
@@ -78,16 +156,21 @@ class MaskedLinear(nn.Linear):
         same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
         For details, see https://github.com/pytorch/pytorch/issues/57109
         """
-        vectorized_ian_uniform(
-            self.weight, self.bias, self.mask,
-            a=math.sqrt(5), nonlinearity=self.activation
-        )
+        if self.ian_init:
+            vectorized_ian_uniform(
+                self.weight, self.bias, self.mask,
+                a=math.sqrt(5), nonlinearity=self.activation
+            )
 
     def set_mask(self, mask: np.ndarray):
         self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
         if self.ian_init:
             # Reinitialize weights based on masks
             self.reset_parameters_w_masking()
+        else:
+            torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+            with torch.no_grad():
+                self.bias.zero_()
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # * is element-wise multiplication in numpy

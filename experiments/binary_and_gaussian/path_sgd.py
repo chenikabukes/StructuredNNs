@@ -15,7 +15,7 @@ class PathSGD:
         self.path_params = self.model.named_parameters()
         self.ratio = None
 
-    # compute the scaling factors for each parameters. Path-SGD updates can then be calculated by element-wise devision
+    # compute the scaling factors for each parameters. Path-SGD updates can then be calculated by element-wise division
     # of gradient values by these scaling factors
     def compute_scaling(self):
         with torch.no_grad():

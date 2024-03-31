@@ -10,8 +10,8 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from binary_gaussian_train_utils import train_loop, load_data_and_adj_mtx
-from strnn.models.strNNDensityEstimator import StrNNDensityEstimator
-from strnn.models.strNN import MaskedLinear
+from strnn.models.strNNDensityEstimatorNormalisation import StrNNDensityEstimatorNormalisation
+from strnn.models.strNNBatchNorm import MaskedLinear
 import wandb
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -56,7 +56,7 @@ def main():
 
     overall_results = defaultdict(dict)
 
-    for num_layers in range(1, 10):
+    for num_layers in range(1, 5):
         hidden_sizes = [h * input_size for h in hidden_size_mults[:num_layers]]
         # print(hidden_sizes)
         model = StrNNDensityEstimator(
@@ -68,7 +68,8 @@ def main():
             precomputed_masks=None,
             adjacency=adj_mtx,
             activation=experiment_config["activation"],
-            data_type=data_type
+            data_type=data_type,
+            ian_init=True
         )
         model.to(device)
 
@@ -76,12 +77,7 @@ def main():
         for layer_idx, layer in enumerate(model.net_list[:-1]):
             if isinstance(layer, MaskedLinear):
                 masked_weights = layer.weight.data * layer.mask
-                non_zero_count = torch.count_nonzero(masked_weights)
                 non_zero_elements = masked_weights[masked_weights != 0]
-                # print("Original weight size:", layer.weight.data.size())
-                # print("Mask size:", layer.mask.size() )
-                # print("Masked weights size:", masked_weights.size())
-                # print("Non zero elements list size:", non_zero_elements.size())
                 if non_zero_elements.numel() > 0:
                     layer_variance = torch.var(non_zero_elements).item()
                     # Normalize variance by the size multiplier for that layer

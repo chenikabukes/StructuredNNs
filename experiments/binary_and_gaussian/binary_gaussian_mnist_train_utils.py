@@ -80,11 +80,11 @@ def train_loop(
         val_losses_per_epoch.append(epoch_val_loss)
 
         # Log metrics to wandb
-        # wandb.log({
-        #     "epoch": epoch,
-        #     "train_loss": epoch_train_loss,
-        #     "val_loss": epoch_val_loss
-        # })
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": epoch_train_loss,
+            "val_loss": epoch_val_loss
+        })
 
         if epoch_val_loss < best_val_loss:
             best_val_loss = epoch_val_loss

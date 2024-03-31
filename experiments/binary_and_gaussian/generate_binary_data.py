@@ -15,6 +15,9 @@ RANDOM_THRESHOLD = {'dense': 0.4, 'medium': 0.6, 'sparse': 0.9}
 class DataGenerator():
 
     def __init__(self):
+        self.train_data = None
+        self.val_data = None
+        self.test_data = None
         pass
 
     def create_adjacency(self, d, adj_type='full_auto'):
@@ -98,6 +101,37 @@ class DataGenerator():
         else:
             raise ValueError(f"{adj_type} is not a valid adj_type!")
 
+    def download_and_process_mnist(self, digit=3):
+        mnist_data = tfds.load("mnist", split=['train', 'test'], batch_size=-1)
+        mnist_data = tfds.as_numpy(mnist_data)
+
+        train_data, test_data = mnist_data
+
+        if digit is not None:
+            train_data = {
+                'image': train_data['image'][train_data['label'] == digit],
+                'label': train_data['label'][train_data['label'] == digit]
+            }
+            test_data = {
+                'image': test_data['image'][test_data['label'] == digit],
+                'label': test_data['label'][test_data['label'] == digit]
+            }
+
+        # Normalize and flatten the data
+        train_images = train_data['image'].astype(np.float32) / 255.0
+        train_images = train_images.reshape((-1, 28 * 28))
+
+        test_images = test_data['image'].astype(np.float32) / 255.0
+        test_images = test_images.reshape((-1, 28 * 28))
+
+        # Split the training data into training and validation sets
+        train_images, val_images = train_test_split(
+            train_images, test_size=NUM_TEST_SAMPLES, random_state=42)
+
+        self.train_data = train_images
+        self.val_data = val_images
+        self.test_data = test_images
+
     def generate_data(self, type, adj_type, A, data_dim=10, num_samples=100, val_pct=0.2, test_pct=0.2):
         """
         Generates synthetic autoregressive data
@@ -172,38 +206,55 @@ class DataGenerator():
         )
 
     def generate_data_group(self, data_type, adj_type, data_dim, sample_sizes):
-        # Create and save adjacency matrix
-        A = self.create_adjacency(
-            d=data_dim, adj_type=adj_type
-        )
-        np.savez(f"./synth_data_files/mnist/{adj_type}_d{str(data_dim)}_adj", A)
+        if data_type == 'mnist':
+            self.download_and_process_mnist()
+            A = self.create_adjacency(d=28 * 28, adj_type=adj_type)
+            np.savez(f"./synth_data_files/mnist/{adj_type}_d784_adj", A)
 
-        # Make sure sample_sizes are sorted in descending order
-        sample_sizes.sort(reverse=True)
-        max_sample_size = sample_sizes[0]
-
-        # Generate train_val and test data
-        print("Generating data ...")
-        self.generate_data(
-            data_type, adj_type, A, data_dim=data_dim, num_samples=max_sample_size
-        )
-
-        print("Processing by sample_size ...")
-        # Process by sample_size
-        for sample_size in sample_sizes:
-            if sample_size == max_sample_size:
-                assert len(self.train_val_data) == max_sample_size
-                sub_train_val_data = self.train_val_data
-            else:
-                sub_train_val_data = self.train_val_data[: sample_size]
-            self.train_data, self.val_data = train_test_split(
-                sub_train_val_data, test_size=0.2, random_state=42
+            print("Processing by sample_size ...")
+            for sample_size in sample_sizes:
+                indices = np.random.choice(self.train_data.shape[0], sample_size, replace=False)
+                sampled_train_data = self.train_data[indices]
+                # Save or further process the MNIST data as needed
+                np.savez(
+                    f"./synth_data_files/mnist/mnist_sample_{sample_size}.npz",
+                    train_data=sampled_train_data,
+                    valid_data=self.val_data,
+                    test_data=self.test_data
+                )
+        else:
+            # Create and save adjacency matrix
+            A = self.create_adjacency(
+                d=data_dim, adj_type=adj_type
             )
-            print(f"Saving data sample_size {sample_size}")
-            print("train size: " + str(len(self.train_data)))
-            print("val size: " + str(len(self.val_data)))
-            print("test size: " + str(len(self.test_data)))
-            self.save_data(data_type, adj_type, data_dim, sample_size)
+            np.savez(f"./synth_data_files/mnist/{adj_type}_d{str(data_dim)}_adj", A)
+
+            # Make sure sample_sizes are sorted in descending order
+            sample_sizes.sort(reverse=True)
+            max_sample_size = sample_sizes[0]
+
+            # Generate train_val and test data
+            print("Generating data ...")
+            self.generate_data(
+                data_type, adj_type, A, data_dim=data_dim, num_samples=max_sample_size
+            )
+
+            # Process by sample_size
+            for sample_size in sample_sizes:
+                print("Processing by sample_size ...")
+                if sample_size == max_sample_size:
+                    assert len(self.train_val_data) == max_sample_size
+                    sub_train_val_data = self.train_val_data
+                else:
+                    sub_train_val_data = self.train_val_data[: sample_size]
+                self.train_data, self.val_data = train_test_split(
+                    sub_train_val_data, test_size=0.2, random_state=42
+                )
+                print(f"Saving data sample_size {sample_size}")
+                print("train size: " + str(len(self.train_data)))
+                print("val size: " + str(len(self.val_data)))
+                print("test size: " + str(len(self.test_data)))
+                self.save_data(data_type, adj_type, data_dim, sample_size)
 
 
 def download_minst():
@@ -261,7 +312,11 @@ def subsample_MNIST(samples):
 
 
 if __name__ == '__main__':
+    data_gen = DataGenerator()
+    data_gen.download_and_process_mnist()
+    data_gen.generate_data_group(data_type='mnist', adj_type='random_sparse', data_dim=784,
+                                 sample_sizes=[2000, 1000])
     # Generate binary data
-    gen = DataGenerator()
-    gen.generate_data_group(data_type='binary', adj_type='random_sparse', data_dim=100,
-                            sample_sizes=[5000, 4000, 3000, 2000, 1000])
+    # gen = DataGenerator()
+    # gen.generate_data_group(data_type='binary', adj_type='random_sparse', data_dim=100,
+    #                         sample_sizes=[5000, 4000, 3000, 2000, 1000])

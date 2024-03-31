@@ -56,6 +56,7 @@ class StrNNDensityEstimatorNormalisation(StrNNBatchNorm):
         mu, log_sigma = x_hat[:, :self.nin], x_hat[:, self.nin:]
         z = (x - mu) * torch.exp(-log_sigma)
         log_prob_gauss = -.5 * (torch.log(self.pi * 2) + z ** 2).sum(1)
+        # log_prob_gauss = -.5 * (torch.log(torch.tensor(torch.pi * 2)) + z ** 2).sum(1)
         ll = - log_sigma.sum(1) + log_prob_gauss
 
         return ll, z
@@ -66,7 +67,6 @@ class StrNNDensityEstimatorNormalisation(StrNNBatchNorm):
         assert self.data_type in SUPPORTED_DATA_TYPES
 
         if self.data_type == 'binary':
-            # Evaluate the binary cross entropy loss
             loss = F.binary_cross_entropy_with_logits(
                 x_hat, x, reduction='sum'
             ) / len(x)

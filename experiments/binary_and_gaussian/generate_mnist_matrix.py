@@ -536,31 +536,23 @@ def straf_experiment():
 
 if __name__ == '__main__':
     try:
-        straf_experiment()
-        poster_mask_experiment(load_results=True)
-        LP_relax_test(10)
-        A = generate_adj_mtx(d=80, threshold=0.1)
-        start_time = datetime.now()
-        masks = optimize_all_masks('greedy', (100, ), A)
-        end_time = datetime.now()
-        print(f"Time elapsed: {(end_time - start_time).total_seconds(): .16f}")
+        # straf_experiment()
+        # poster_mask_experiment(load_results=True)
+        # LP_relax_test(10)
+        # A = generate_adj_mtx(d=28, threshold=0.1)
+        # start_time = datetime.now()
+        # masks = optimize_all_masks('greedy', (100, ), A)
+        # end_time = datetime.now()
+        # print(f"Time elapsed: {(end_time - start_time).total_seconds(): .16f}")
 
         # Generate adjacency matrices for MNIST
-        for nbr_size in [16, 18, 22, 24, 26]:
-            A = obtain_adjacency_neighbors(shp=80, nbr_size=nbr_size)
-            np.savez(f'./synth_data_files/mnist/80_nbr{nbr_size}_adj', A)
+        for nbr_size in [15]:
+            A = obtain_adjacency_neighbors(shp=28, nbr_size=nbr_size)
+            np.savez(f'./synth_data_files/mnist/28_nbr{nbr_size}_adj', A)
 
         # Test matrix
-        # A = obtain_adjacency_neighbors(shp=4, nbr_size=1, print_nbr_sizes=True, dense_centre={1: 2})
-        # d28_dense_1_adj
-        A = obtain_adjacency_neighbors(shp=80, nbr_size=1, dense_centre={10: 2, 18: 3})
-        np.savez('./synth_data_files/mnist/d80_dense_1_adj', A)
-        # d28_dense_2_adj
-        # A = obtain_adjacency_neighbors(shp=28, nbr_size=2, dense_centre={10: 3, 18: 4})
-        # np.savez('./synth_data_files/mnist/d28_dense_2_adj', A)
-        # # d28_dense_3_adj
-        # A = obtain_adjacency_neighbors(shp=28, nbr_size=5, dense_centre={10: 8, 18: 10})
-        # np.savez('./synth_data_files/mnist/d28_dense_3_adj', A)
+        # A = obtain_adjacency_neighbors(shp=28, nbr_size=1, dense_centre={10: 2, 18: 3})
+        # np.savez('./synth_data_files/mnist/d28_dense_1_adj', A)
 
         ## Zuko mask comparisons
         adjacency = np.tril(np.ones(10), -1)

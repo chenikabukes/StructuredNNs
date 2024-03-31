@@ -303,9 +303,9 @@ def subsample_MNIST(samples):
 if __name__ == '__main__':
     # Initialize the DataGenerator
     gen = DataGenerator()
-    adj_type = 'random_fullyconnected'
+    adj_type = 'full_auto'
     data_dim = 100
     very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
-    np.savez(f"./synth_data_files/fully_connected_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
-    sample_sizes = (5000, 4000, 3000, 2000, 1000)
+    np.savez(f"./synth_data_files/full_auto_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
+    sample_sizes = (2000, 1000)
     gen.generate_data_group(data_type='binary', adj_type=adj_type, data_dim=data_dim, sample_sizes=sample_sizes)

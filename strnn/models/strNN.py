@@ -153,28 +153,28 @@ class MaskedLinear(nn.Linear):
         self.ian_init = ian_init
         self.activation = activation
 
-    # def reset_parameters_w_masking(self) -> None:
-    #     """
-    #     Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
-    #     same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
-    #     For details, see https://github.com/pytorch/pytorch/issues/57109
-    #     """
-    #     vectorized_ian_uniform(
-    #         self.weight, self.bias, self.mask,
-    #         a=math.sqrt(5), nonlinearity=self.activation
-    #     )
+    def reset_parameters_w_masking(self) -> None:
+        """
+        Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
+        same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
+        For details, see https://github.com/pytorch/pytorch/issues/57109
+        """
+        vectorized_ian_uniform(
+            self.weight, self.bias, self.mask,
+            a=math.sqrt(5), nonlinearity=self.activation
+        )
 
     # Uncomment this for varying scale-variance experiment
-    def reset_parameters_w_masking(self, scale=1.0) -> None:
-        """
-        Reset parameters with custom Kaiming uniform initialization considering the mask.
-        :param scale: Scaling factor for the variance of the weights.
-        """
-        fan_in = self.mask.sum(dim=1).clamp(min=1).float()
-        a = math.sqrt(5)
-        varying_variance_kaiming_uniform(self.weight, fan_in, a=a, scale=scale)
-        with torch.no_grad():
-            self.bias.uniform_(-0.01, 0.01)
+    # def reset_parameters_w_masking(self, scale=1.0) -> None:
+    #     """
+    #     Reset parameters with custom Kaiming uniform initialization considering the mask.
+    #     :param scale: Scaling factor for the variance of the weights.
+    #     """
+    #     fan_in = self.mask.sum(dim=1).clamp(min=1).float()
+    #     a = math.sqrt(5)
+    #     varying_variance_kaiming_uniform(self.weight, fan_in, a=a, scale=scale)
+    #     with torch.no_grad():
+    #         self.bias.uniform_(-0.01, 0.01)
 
     def set_mask(self, mask: np.ndarray):
         self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
