@@ -1,5 +1,5 @@
 from .models.strNN import StrNN
-from .models.strNNBatchNorm import StrNNBatchNorm
+from .models.strNNNormalised import StrNNNormalised
 from .models.strNN import MaskedLinear
 
-__all__ = ["StrNN", "MaskedLinear", "StrNNBatchNorm"]
+__all__ = ["StrNN", "MaskedLinear", "StrNNNormalised"]

@@ -2,9 +2,10 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import numpy as np
+from strnn.models.strNNNormalised import StrNNNormalised
 from strnn.models.strNNBatchNorm import StrNNBatchNorm
 from numpy.random import binomial
-from strnn.models.strNNBatchNorm import MaskedLinear
+from strnn.models.strNNNormalised import MaskedLinear
 from strnn.models.model_utils import NONLINEARITIES
 
 SUPPORTED_DATA_TYPES = ['binary', 'gaussian']
@@ -23,31 +24,15 @@ class StrNNDensityEstimatorNormalisation(StrNNBatchNorm):
                  data_type: str = 'binary',
                  ian_init: bool = 'True'
                  ):
-        assert data_type in SUPPORTED_DATA_TYPES
-        self.data_type = data_type
-
         super().__init__(
             nin, hidden_sizes, nout, opt_type, opt_args,
             precomputed_masks, adjacency, activation, ian_init
         )
-
-        # Adding batch/layer normalization layers directly in the net_list
-        new_net_list = nn.ModuleList()
-        for layer in self.net_list:
-            new_net_list.append(layer)
-            if isinstance(layer, MaskedLinear) and layer.out_features != nout:
-                # new_net_list.append(nn.BatchNorm1d(layer.out_features))
-                new_net_list.append(nn.LayerNorm(layer.out_features))
-                new_net_list.append(NONLINEARITIES[activation])
-        self.net_list = new_net_list
-        # Check if the last item is an instance of the activation function class
-        if isinstance(self.net_list[-1], NONLINEARITIES[activation].__class__):
-            self.net_list = self.net_list[:-1]
+        assert data_type in SUPPORTED_DATA_TYPES
+        self.data_type = data_type
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for layer in self.net_list:
-            x = layer(x)
-        return x
+        return self.net(x)
 
     def compute_LL(self, x, x_hat):
         """
@@ -56,7 +41,6 @@ class StrNNDensityEstimatorNormalisation(StrNNBatchNorm):
         mu, log_sigma = x_hat[:, :self.nin], x_hat[:, self.nin:]
         z = (x - mu) * torch.exp(-log_sigma)
         log_prob_gauss = -.5 * (torch.log(self.pi * 2) + z ** 2).sum(1)
-        # log_prob_gauss = -.5 * (torch.log(torch.tensor(torch.pi * 2)) + z ** 2).sum(1)
         ll = - log_sigma.sum(1) + log_prob_gauss
 
         return ll, z
@@ -67,6 +51,7 @@ class StrNNDensityEstimatorNormalisation(StrNNBatchNorm):
         assert self.data_type in SUPPORTED_DATA_TYPES
 
         if self.data_type == 'binary':
+            # Evaluate the binary cross entropy loss
             loss = F.binary_cross_entropy_with_logits(
                 x_hat, x, reduction='sum'
             ) / len(x)

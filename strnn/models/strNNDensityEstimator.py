@@ -36,16 +36,6 @@ class StrNNDensityEstimator(StrNN):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-    # def forward(self, x, return_layer_outputs=False):
-    #     layer_outputs = {}
-    #     for name, layer in self.net.named_children():
-    #         x = layer(x)
-    #         if return_layer_outputs:
-    #             layer_outputs[name] = x
-    #     if return_layer_outputs:
-    #         return layer_outputs
-    #     return x
-
     def compute_LL(self, x, x_hat):
         """
         Compute negative log likelihood given input x and reconstructed x_hat
