@@ -11,7 +11,7 @@ from strnn.models.strNN import MaskedLinear
 from strnn.models.model_utils import NONLINEARITIES
 
 SUPPORTED_DATA_TYPES = ['binary', 'gaussian']
-
+while i > 0:
 
 class StrNNDensityEstimator(StrNN):
     def __init__(self,

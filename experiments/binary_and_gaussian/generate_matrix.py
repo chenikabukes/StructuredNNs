@@ -35,6 +35,8 @@ class DataGenerator():
         """
         if adj_type == 'full_auto':
             return np.tril(np.tril(np.ones((d, d)), -1))
+        elif adj_type == 'full_ones':
+            return np.ones((d, d))
         elif 'prev' in adj_type:
             # Parse adj_type for how many previous dimensions to consider
             K = int(adj_type.split('_')[1])
@@ -303,9 +305,9 @@ def subsample_MNIST(samples):
 if __name__ == '__main__':
     # Initialize the DataGenerator
     gen = DataGenerator()
-    adj_type = 'full_auto'
+    adj_type = 'full_ones'
     data_dim = 100
     very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
-    np.savez(f"./synth_data_files/full_auto_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
+    np.savez(f"./synth_data_files/full_ones_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
     sample_sizes = (2000, 1000)
     gen.generate_data_group(data_type='binary', adj_type=adj_type, data_dim=data_dim, sample_sizes=sample_sizes)

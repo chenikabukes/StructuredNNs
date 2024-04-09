@@ -7,7 +7,9 @@ import torch.nn.functional as F
 import numpy as np
 import warnings
 import math
+
 from strnn.models.model_utils import NONLINEARITIES
+
 
 def ian_uniform(
         weights: torch.Tensor,
@@ -106,15 +108,55 @@ def vectorized_ian_uniform(weights: torch.Tensor,
     return weights, bias
 
 
+# class MaskedLinear(nn.Linear):
+#     """
+#     A linear neural network layer, except with a configurable
+#     binary mask on the weights
+#
+#     It also has binary mask multiplied element wise to the weights
+#     """
+#     mask: torch.Tensor
+#
+#     def __init__(
+#             self,
+#             in_features: int,
+#             out_features: int,
+#             ian_init: bool = False,
+#             activation: str = 'relu'
+#     ):
+#         super().__init__(in_features, out_features)
+#         # register_buffer used for non-parameter variables in the model
+#         self.register_buffer('mask', torch.ones(out_features, in_features))
+#         self.ian_init = ian_init
+#         self.activation = activation
+#
+#     def reset_parameters_w_masking(self) -> None:
+#         """
+#         Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
+#         same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
+#         For details, see https://github.com/pytorch/pytorch/issues/57109
+#         """
+#         if self.ian_init:
+#             vectorized_ian_uniform(
+#                 self.weight, self.bias, self.mask,
+#                 a=math.sqrt(5), nonlinearity=self.activation
+#             )
+#
+#     def set_mask(self, mask: np.ndarray):
+#         self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
+#         if self.ian_init:
+#             # Reinitialize weights based on masks
+#             self.reset_parameters_w_masking()
+#         else:
+#             torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+#             with torch.no_grad():
+#                 self.bias.zero_()
+#
+#     def forward(self, input: torch.Tensor) -> torch.Tensor:
+#         # * is element-wise multiplication in numpy
+#         return F.linear(input, self.weight, self.bias)
+#         # return F.linear(input, self.mask * self.weight, self.bias)
 class MaskedLinear(nn.Linear):
-    """
-    A linear neural network layer, except with a configurable
-    binary mask on the weights
-
-    It also has binary mask multiplied element wise to the weights
-    """
-    mask: torch.Tensor
-
     def __init__(
             self,
             in_features: int,
@@ -122,34 +164,41 @@ class MaskedLinear(nn.Linear):
             ian_init: bool = False,
             activation: str = 'relu'
     ):
-        super().__init__(in_features, out_features)
-        # register_buffer used for non-parameter variables in the model
-        self.register_buffer('mask', torch.ones(out_features, in_features))
         self.ian_init = ian_init
+        self.mask = torch.ones(out_features, in_features)
         self.activation = activation
+        super().__init__(in_features, out_features)
 
-    def reset_parameters_w_masking(self) -> None:
-        """
-        Setting a=sqrt(5) in kaiming_uniform (thus also ian_uniform) is the
-        same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
-        For details, see https://github.com/pytorch/pytorch/issues/57109
-        """
+        # Initialize weights without considering the mask for testing purposes
+        self.reset_parameters()
+
+    def reset_parameters(self):
         if self.ian_init:
-            vectorized_ian_uniform(
-                self.weight, self.bias, self.mask,
-                a=math.sqrt(5), nonlinearity=self.activation
-            )
+            vectorized_ian_uniform(self.weight, self.bias, self.mask, a=math.sqrt(5), nonlinearity=self.activation)
         else:
-            torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+            # Calculate fan-in and fan-out manually
+            fan_in, fan_out = self.calculate_fan_in_out()
+            print(f"Fan-in: {fan_in}, Fan-out: {fan_out}")
+            std = math.sqrt(2. / fan_in)
+            bound = math.sqrt(3.0) * std
+            with torch.no_grad():
+                self.weight.uniform_(-bound, bound)
+                self.bias.data.zero_()
         self.bias.data.zero_()
 
-    def set_mask(self, mask: np.ndarray):
-        self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
-        self.reset_parameters_w_masking()
+    def calculate_fan_in_out(self):
+        dimensions = self.weight.size()
+        if len(dimensions) == 2:
+            fan_in = dimensions[1]
+            fan_out = dimensions[0]
+        else:
+            raise NotImplementedError("Fan-in/Fan-out calculation not implemented for this layer type")
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        # * is element-wise multiplication in numpy
-        return F.linear(input, self.mask * self.weight, self.bias)
+        return fan_in, fan_out
+
+    def forward(self, input: torch.Tensor):
+        # Use weights directly without applying mask for this test scenario
+        return F.linear(input, self.weight, self.bias)
 
 
 def get_layer_mask(self, layer_index: int) -> torch.Tensor:
@@ -239,7 +288,8 @@ class StrNNBatchNorm(nn.Module):
         """
         for layer in self.net_list:
             if isinstance(layer, MaskedLinear):
-                x = F.linear(x, layer.mask * layer.weight, layer.bias)
+                # x = F.linear(x, layer.mask * layer.weight, layer.bias)
+                x = F.linear(x, layer.weight, layer.bias)
             else:
                 x = layer(x)
         return x
@@ -253,20 +303,23 @@ class StrNNBatchNorm(nn.Module):
             masks = self.precomputed_masks
         else:
             masks = self.factorize_masks()
+
         self.masks = masks
-        assert self.check_masks(), "Mask check failed!"
-        # For when each input produces multiple outputs
-        # e.g.: each x_i gives mean and variance for Gaussian density estimation
-        if self.nout != self.A.shape[0]:
-            # Then nout should be an exact multiple of nin
-            assert self.nout % self.nin == 0
-            k = int(self.nout / self.nin)
-            # replicate the mask across the other outputs
-            masks[-1] = np.concatenate([masks[-1]] * k, axis=1)
+        # assert self.check_masks(), "Mask check failed!"
+        #
+        # # For when each input produces multiple outputs
+        # # e.g.: each x_i gives mean and variance for Gaussian density estimation
+        # if self.nout != self.A.shape[0]:
+        #     # Then nout should be an exact multiple of nin
+        #     assert self.nout % self.nin == 0
+        #     k = int(self.nout / self.nin)
+        #     # replicate the mask across the other outputs
+        #     masks[-1] = np.concatenate([masks[-1]] * k, axis=1)
         # Set the masks in all MaskedLinear layers
         layers = [l for l in self.net_list if isinstance(l, MaskedLinear)]
         for layer, mask in zip(layers, self.masks):
-            layer.set_mask(mask)
+            # layer.set_mask(mask)
+            layer.reset_parameters()
 
     def factorize_masks(self) -> list[np.ndarray]:
         """

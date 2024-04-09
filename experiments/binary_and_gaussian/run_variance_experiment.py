@@ -52,7 +52,7 @@ def main():
     else:
         raise ValueError("Data type must be binary or Gaussian!")
 
-    run = wandb.init(project=args.wandb_name, config=experiment_config, reinit=True)
+    run = wandb.init(project="strnn_init", config=experiment_config, reinit=True)
 
     overall_results = defaultdict(dict)
 
@@ -85,7 +85,8 @@ def main():
                         layer_idx // 2]  # Adjusted for every second layer being MaskedLinear
                     half_n_vw = 0.5 * non_zero_elements.numel() * normalized_variance
                     layer_variances.append(half_n_vw)
-
+        # check fully connected kaiming and ian variance
+        # check sparse for ian to be close to 1
         optimizer = AdamW(
             model.parameters(),
             lr=experiment_config["learning_rate"],
@@ -109,8 +110,8 @@ def main():
         plt.xlabel('Layer index')
         plt.ylabel(r'$\frac{1}{2} n V[w]$')
         plt.xticks(range(1, len(layer_variances) + 1))
-        plt.yticks(range(-1, 5))
-        plt.ylim(-1, 5)
+        plt.yticks(range(-1, 10))
+        plt.ylim(-1, 10)
         plt.grid(True)
         plt.tight_layout()
 
