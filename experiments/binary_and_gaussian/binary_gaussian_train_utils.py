@@ -8,6 +8,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from strnn.models.strNNNormalised import StrNNNormalised
 from strnn.models.strNN import StrNN
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader

@@ -96,14 +96,16 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser("Runs StrNN on synthetic dataset.")
 parser.add_argument("--experiment_names", type=str, nargs='+', help="List of experiment names")
 parser.add_argument("--wandb_name", type=str)
-parser.add_argument("--num_trials", type=int, default=5, help="Number of trials for each experiment to compute confidence intervals")
+parser.add_argument("--num_trials", type=int, default=1,
+                    help="Number of trials for each experiment to compute confidence intervals")
 args = parser.parse_args()
+
 
 def main():
     with open("./experiment_config.yaml", "r") as f:
         configs = yaml.safe_load(f)
 
-    sparsity_levels = [0.4, 0]
+    sparsity_levels = [0.975, 0.95, 0.8, 0.7, 0.5, 0]
     run = wandb.init(project=args.wandb_name, reinit=True)
 
     # Initializing lists to store final validation losses for each trial
@@ -130,10 +132,17 @@ def main():
                 adjacency=adj_mtx, activation=experiment_config["activation"],
                 data_type=data_type, ian_init=True
             ).to(device)
-            optimizer_ian = AdamW(model_ian.parameters(), lr=experiment_config["learning_rate"],
-                                      eps=experiment_config["epsilon"], weight_decay=experiment_config["weight_decay"])
-            results_ian = train_loop(model_ian, optimizer_ian, DataLoader(train_data, batch_size=batch_size, shuffle=True),
-                                         DataLoader(val_data, batch_size=batch_size, shuffle=False), experiment_config["max_epochs"], experiment_config["patience"])
+            optimizer_ian = AdamW(model_ian.parameters(),
+                                  lr=experiment_config["learning_rate"],
+                                  eps=experiment_config["epsilon"],
+                                  weight_decay=experiment_config["weight_decay"])
+            results_ian = train_loop(model_ian,
+                                     optimizer_ian,
+                                     DataLoader(train_data, batch_size=batch_size, shuffle=True),
+                                     DataLoader(val_data, batch_size=batch_size, shuffle=False),
+                                     experiment_config["max_epochs"],
+                                     experiment_config["patience"])
+
             final_val_losses_ian[sparsity_levels[i]].append(results_ian['val_losses_per_epoch'][-1])
 
             # Kaiming Init Model Training
@@ -143,10 +152,19 @@ def main():
                 adjacency=adj_mtx, activation=experiment_config["activation"],
                 data_type=data_type, ian_init=False
             ).to(device)
-            optimizer_kaiming = AdamW(model_kaiming.parameters(), lr=experiment_config["learning_rate"],
-                                          eps=experiment_config["epsilon"], weight_decay=experiment_config["weight_decay"])
-            results_kaiming = train_loop(model_kaiming, optimizer_kaiming, DataLoader(train_data, batch_size=batch_size, shuffle=True),
-                                             DataLoader(val_data, batch_size=batch_size, shuffle=False), experiment_config["max_epochs"], experiment_config["patience"])
+
+            optimizer_kaiming = AdamW(model_kaiming.parameters(),
+                                      lr=experiment_config["learning_rate"],
+                                      eps=experiment_config["epsilon"],
+                                      weight_decay=experiment_config["weight_decay"])
+
+            results_kaiming = train_loop(model_kaiming,
+                                         optimizer_kaiming,
+                                         DataLoader(train_data, batch_size=batch_size, shuffle=True),
+                                         DataLoader(val_data, batch_size=batch_size, shuffle=False),
+                                         experiment_config["max_epochs"],
+                                         experiment_config["patience"])
+
             final_val_losses_kaiming[sparsity_levels[i]].append(results_kaiming['val_losses_per_epoch'][-1])
 
     # Computing mean and standard deviation for confidence intervals
@@ -167,11 +185,12 @@ def main():
     ax.set_title('Final Validation Loss Over Sparsity Levels')
     ax.set_xlabel('Sparsity Level')
     ax.set_ylabel('Final Validation Loss')
-    ax.set_yscale('log')  # Set the y-axis to a logarithmic scale
+    ax.set_yscale('log')
     ax.legend()
     plt.show()
-    wandb.log({'Final Validation Loss Over Sparsity (Ian vs Kaiming) d200': wandb.Image(fig)})
+    wandb.log({'Final Validation Loss Over Sparsity (Ian vs Kaiming)': wandb.Image(fig)})
     fig.savefig('validation_loss_vs_sparsity.png')
+
 
 if __name__ == "__main__":
     main()

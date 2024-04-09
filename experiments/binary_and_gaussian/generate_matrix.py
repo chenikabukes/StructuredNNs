@@ -307,7 +307,11 @@ if __name__ == '__main__':
     gen = DataGenerator()
     adj_type = 'full_ones'
     data_dim = 100
-    very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
-    np.savez(f"./synth_data_files/full_ones_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
+    # very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
+    # np.savez(f"./synth_data_files/full_ones_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
+    autoregressive_adj_mtx = gen.create_adjacency(d=data_dim, adj_type='full_auto')
+    np.savez(f"./synth_data_files/full_auto_adj_mtx_{data_dim}.npz", A=autoregressive_adj_mtx)
+    fully_connected_adj_mtx = gen.create_adjacency(d=data_dim, adj_type='full_ones')
+    np.savez(f"./synth_data_files/fully_connected_adj_mtx_{data_dim}.npz", A=fully_connected_adj_mtx)
     sample_sizes = (2000, 1000)
     gen.generate_data_group(data_type='binary', adj_type=adj_type, data_dim=data_dim, sample_sizes=sample_sizes)

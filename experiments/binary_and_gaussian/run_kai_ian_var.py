@@ -41,11 +41,9 @@ def compute_ian_layer_variances(model):
             masked_weights = layer.weight.data * layer.mask
             non_zero_elements = masked_weights[masked_weights != 0]
             if non_zero_elements.numel() > 0:
-                # layer_variance = torch.var(non_zero_elements).item()
                 layer_variance = torch.var(non_zero_elements).item() * (
                             non_zero_elements.numel() / masked_weights.numel())
-                half_n_vw = layer_variance
-                layer_variances.append(half_n_vw)
+                layer_variances.append(layer_variance)
     return layer_variances
 
 
@@ -69,9 +67,10 @@ def main():
     data_type = "binary" if "binary" in dataset_name else "gaussian"
     output_size = input_size if data_type == "binary" else 2 * input_size
 
-    run = wandb.init(project="strnn_init", entity="strnn-init", config=experiment_config, reinit=True)
+    # run = wandb.init(project="strnn_init", entity="strnn-init", config=experiment_config, reinit=True)
 
-    hidden_sizes = [h * input_size for h in hidden_size_mults[:5]]
+    hidden_sizes = [h * input_size for h in hidden_size_mults[:6]]
+    print(hidden_sizes)
 
     model_ian = StrNNDensityEstimatorNormalisation(
         nin=input_size,
@@ -109,22 +108,23 @@ def main():
     expected_variances = [2 / h for h in [input_size] + hidden_sizes[:5]]
     print(expected_variances)
 
-    for layer_idx in range(5):
-        plt.figure(figsize=(5, 5))
-        plt.scatter(['Ian Init'], [variances_ian[layer_idx]], color='blue', label='Ian Init')
-        plt.scatter(['Kaiming Init'], [variances_kaiming[layer_idx]], color='green', label='Kaiming Init')
-        plt.scatter(['Expected Kaiming'], [expected_variances[layer_idx]], color='red', label='Expected Kaiming')
-        plt.ylabel('Variance')
-        plt.ylim(0, 0.025)
-        plt.title(f'Layer {layer_idx + 1} Variance Comparison')
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-
-        plot_filename = f'layer_{layer_idx + 1}_variances.png'
-        plt.close()
-
-        wandb.log({f"Layer Variance Comparison": wandb.Image(plot_filename)})
+    # for layer_idx in range(5):
+    #     plt.figure(figsize=(5, 5))
+    #     plt.scatter(['Ian Init'], [variances_ian[layer_idx]], color='blue', label='Ian Init')
+    #     plt.scatter(['Kaiming Init'], [variances_kaiming[layer_idx]], color='green', label='Kaiming Init')
+    #     plt.scatter(['Expected Kaiming'], [expected_variances[layer_idx]], color='red', label='Expected Kaiming')
+    #     plt.ylabel('Variance')
+    #     plt.ylim(0, 0.025)
+    #     plt.title(f'Layer {layer_idx + 1} Variance Comparison')
+    #     plt.legend()
+    #     plt.grid(True)
+    #     plt.tight_layout()
+    #
+    #     plot_filename = f'layer_{layer_idx + 1}_variances.png'
+    #     plt.savefig(plot_filename)
+    #     plt.close()
+    #
+    #     wandb.log({f"Layer Variance Comparison": wandb.Image(plot_filename)})
 
 
 if __name__ == "__main__":
