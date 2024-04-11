@@ -11,83 +11,36 @@ import math
 from strnn.models.model_utils import NONLINEARITIES
 
 
-def varying_variance_kaiming_uniform(tensor, fan_in, a=0.0, scale=1.0):
+def vectorized_ian_normal(weights: torch.Tensor,
+                          bias: torch.Tensor,
+                          mask: torch.Tensor,
+                          a: float = 0,
+                          nonlinearity: str = 'leaky_relu'
+                          ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Custom Kaiming uniform initialization with variance scaling.
-    :param tensor: The weight tensor to initialize.
-    :param fan_in: The number of input units in the weight tensor (can be a tensor of scalar values for each output unit).
-    :param a: The negative slope of the rectifier used after this layer (only used with 'leaky_relu').
-    :param scale: The scaling factor for the variance (expected to be a scalar).
-    """
-    with torch.no_grad():
-        nonlinearity = 'leaky_relu'
-        gain = torch.nn.init.calculate_gain(nonlinearity, a)
+    Fills the input weights with values based on Kaiming normal initialization
+    (https://pytorch.org/docs/stable/nn.html#torch.nn.init.kaiming_normal_)
+    but takes into account the number of fan-ins that are masked in StrNN
 
-        if fan_in.numel() == 1:
-            std = gain / torch.sqrt(fan_in).item()
-            bound = math.sqrt(3.0) * std * scale
-            tensor.uniform_(-bound, bound)
-        else:
-            for i, fi in enumerate(fan_in):
-                std = gain / torch.sqrt(fi).item() if fi > 0 else gain
-                bound = math.sqrt(3.0) * std * scale
-                tensor[i].uniform_(-bound, bound)
-
-
-def ian_uniform(
-        weights: torch.Tensor,
-        bias: torch.Tensor,
-        mask: torch.Tensor,
-        a: float = 0,
-        nonlinearity: str = 'leaky_relu'
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Fills the input weights with values based on Kaiming uniform initialization
-    (https://pytorch.org/docs/stable/_modules/torch/nn/init.html#kaiming_uniform_)
-    but takes into account the number of fan_ins that are masked in StrNN
-
-    :param tensor: weight tensor to be filled
+    :param weights: weight tensor to be filled
+    :param bias: bias tensor to be filled
     :param mask: weight mask for this layer
-    :param
+    :param a: the negative slope of the rectifier used after this layer (only used with 'leaky_relu')
+    :param nonlinearity: the non-linear function (`nn.functional` name), recommended to use only 'relu' or 'leaky_relu'
     """
-    if torch.overrides.has_torch_function_variadic(weights):
-        return torch.overrides.handle_torch_function(
-            ian_uniform,
-            (weights,),
-            tensor=weights,
-            a=a,
-            nonlinearity=nonlinearity)
+    # Ensuring non-zero fan-in for each unit
+    fan_ins = mask.sum(dim=1).clamp(min=1)
 
-    if 0 in weights.shape or 0 in bias.shape:
-        warnings.warn("In ian_uniform: weights or bias cannot be 0-dimensional!")
-        return weights, bias
-
-    # Compute fan_in based on mask
-    fan_ins = mask.sum(dim=1)
-
-    # Try multiplying with number
-    # Compute other quantities as in Kaiming uniform
+    # Calculate the appropriate gain for the nonlinearity
     gain = torch.nn.init.calculate_gain(nonlinearity, a)
 
-    # Update weights
-    i = 0
-    for row in weights:
-        fan_in = fan_ins[i]
-        std = gain / math.sqrt(fan_in) if fan_in > 0 else gain
-        bound = math.sqrt(3.0) * std
+    # Compute standard deviation for Kaiming normal
+    std = gain / torch.sqrt(fan_ins)
 
-        with torch.no_grad():
-            row.uniform_(-bound, bound)
-        i += 1
-
-    # Update bias similarly
-    i = 0
-    for b in bias:
-        fan_in = fan_ins[i]
-        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
-        with torch.no_grad():
-            b.uniform_(-bound, bound)
-        i += 1
+    # Apply normal initialization row-wise to handle varying fan-in
+    with torch.no_grad():
+        for i, std_dev in enumerate(std):
+            weights[i].normal_(0, std_dev.item())
 
     return weights, bias
 
@@ -140,13 +93,13 @@ class MaskedLinear(nn.Linear):
             self,
             in_features: int,
             out_features: int,
-            ian_init: bool = False,
+            init: int,
             activation: str = 'relu'
     ):
         super().__init__(in_features, out_features)
         # register_buffer used for non-parameter variables in the model
         self.register_buffer('mask', torch.ones(out_features, in_features))
-        self.ian_init = ian_init
+        self.init = init
         self.activation = activation
 
     def reset_parameters_w_masking(self) -> None:
@@ -155,15 +108,22 @@ class MaskedLinear(nn.Linear):
         same as initializing with uniform(-1/sqrt(in_features), 1/sqrt(in_features)).
         For details, see https://github.com/pytorch/pytorch/issues/57109
         """
-        if self.ian_init:
-            print(self.mask)
+        if self.init == 1:
             vectorized_ian_uniform(
                 self.weight, self.bias, self.mask,
                 a=math.sqrt(5), nonlinearity=self.activation
             )
-        else:
-            torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        self.bias.data.zero_()
+        elif self.init == 2:
+            torch.nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5), nonlinearity=self.activation)
+        elif self.init == 3:
+            vectorized_ian_normal(
+                self.weight, self.bias, self.mask,
+                a=math.sqrt(5), nonlinearity=self.activation
+            )
+        elif self.init == 4:
+            torch.nn.init.kaiming_normal_(self.weight, a=math.sqrt(5), nonlinearity=self.activation)
+        with torch.no_grad():
+            self.bias.zero_()
 
     def set_mask(self, mask: np.ndarray):
         self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
@@ -200,12 +160,12 @@ class StrNN(nn.Module):
             nin: int,
             hidden_sizes: tuple[int, ...],
             nout: int,
-            opt_type: str = 'greedy',  # algorithm 1
+            opt_type: str = 'greedy',
             opt_args: dict = {'var_penalty_weight': 0.0},
             precomputed_masks: np.ndarray | None = None,
             adjacency: np.ndarray | None = None,
             activation: str = 'relu',
-            ian_init: bool = True
+            init: int = 1
     ):
         """
         Initializes a Structured Neural Network (StrNN)
@@ -217,7 +177,7 @@ class StrNN(nn.Module):
         :param precomputed_masks: previously stored masks, use directly
         :param adjacency: the adjacency matrix, nout by nin
         :param activation: activation function to use in this NN
-        :param ian_init: weight initialization takes the masks into account
+        :param init: weight initialization takes the masks into account
         """
         super().__init__()
 
@@ -232,30 +192,25 @@ class StrNN(nn.Module):
             self.A = adjacency
         else:
             assert self.opt_type == 'MADE'
-            # Initialize adjacency structure to fully autoregressive
             self.A = np.tril(np.ones((nout, nin)), -1)
-        self.ian_init = ian_init
+        self.init = init
 
-        # Define activation
         try:
             self.activation = NONLINEARITIES[activation]
         except ValueError:
             raise ValueError(f"{activation} is not a valid activation!")
 
-        # Define StrNN network
-        self.net_list = []
-        hs = [nin] + list(hidden_sizes) + [nout]  # list of all layer sizes
-        for h0, h1 in zip(hs, hs[1:]):
-            self.net_list.extend([
-                MaskedLinear(h0, h1, self.ian_init),
-                self.activation
-            ])
+        self.net_list = nn.ModuleList()
+        hs = [nin] + list(hidden_sizes) + [nout]
 
-        # Remove the last activation for the output layer
-        self.net_list.pop()
+        # Create MaskedLinear and LayerNorm layers for each hidden layer
+        for h0, h1 in zip(hs[:-1], hs[1:-1]):
+            self.net_list.append(MaskedLinear(h0, h1, init, activation))
+            self.net_list.append(nn.LayerNorm(h1))
+            self.net_list.append(NONLINEARITIES[activation])
+
+        self.net_list.append(MaskedLinear(hs[-2], hs[-1], init, activation))
         self.net = nn.Sequential(*self.net_list)
-
-        # Update masks
         self.update_masks()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -273,6 +228,7 @@ class StrNN(nn.Module):
         if self.precomputed_masks is not None:
             # Load precomputed masks if provided
             masks = self.precomputed_masks
+            print("in self.precomputed_masks", masks)
         else:
             masks = self.factorize_masks()
 
@@ -288,8 +244,7 @@ class StrNN(nn.Module):
             # replicate the mask across the other outputs
             masks[-1] = np.concatenate([masks[-1]] * k, axis=1)
         # Set the masks in all MaskedLinear layers
-        layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
-        # layers = [l for l in self.net_list if isinstance(l, MaskedLinear)]
+        layers = [l for l in self.net_list if isinstance(l, MaskedLinear)]
         for layer, mask in zip(layers, self.masks):
             layer.set_mask(mask)
 
@@ -432,8 +387,6 @@ class StrNN(nn.Module):
 
 
 if __name__ == '__main__':
-    # TODO: Write unit tests
-    # Test StrNN model
     try:
         d = 3
         A = np.ones((d, d))
@@ -448,10 +401,9 @@ if __name__ == '__main__':
             precomputed_masks=None,
             adjacency=A,
             activation='relu',
-            ian_init=True
+            init=1
         )
 
-    #     import pdb; pdb.set_trace()
     except:
         import sys, pdb, traceback
 

@@ -491,6 +491,25 @@ binary_random_medium_sparse_d100_n2000_StrNN_best: &binary_random_medium_sparse_
   opt_type: "greedy"
   optimizer: "adamw"
 
+
+citeseer_strnn_experiment: &citeseer_strnn_experiment
+  dataset_name: "CiteSeer"
+  adj_mtx_name: "None"  # Assuming you're creating the adjacency matrix in the script
+  activation: "relu"
+  epsilon: 1e-8
+  hidden_size_multiplier_1: 2
+  hidden_size_multiplier_2: 2
+  hidden_size_multiplier_3: 2
+  num_hidden_layers: 3
+  learning_rate: 0.01
+  weight_decay: 5e-4
+  patience: 10
+  max_epochs: 300
+  batch_size: 1  # Not used in this context but required by the config structure
+  opt_type: "greedy"
+  optimizer: "adamw"
+
+
 binary_random_mid_dense_d100_n2000_StrNN_best: &binary_random_mid_dense_d100_n2000_StrNN_best
   dataset_name: "binary_random_middense_d100_n2000"
   adj_mtx_name: "mid_dense_adj_mtx_100"

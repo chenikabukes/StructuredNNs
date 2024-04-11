@@ -69,10 +69,7 @@ def main():
         output_size = 2 * input_size
     else:
         raise ValueError("Data type must be binary or Gaussian!")
-    # Question: why initialisation even matters in first place?
-    # Goal we want hidden size 5+
-    # Manually imbalance variances
-    # Set the variance to something non-sensical with default init
+
     model = StrNNDensityEstimator(
         nin=input_size,
         hidden_sizes=hidden_sizes,

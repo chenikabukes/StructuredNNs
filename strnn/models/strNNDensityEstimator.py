@@ -1,6 +1,3 @@
-# Note: for Gaussian cases, need to construct a full 2d-by-d adj mtx
-# StrNN network no longer handles Gaussian case automatically
-
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -11,7 +8,7 @@ from strnn.models.strNN import MaskedLinear
 from strnn.models.model_utils import NONLINEARITIES
 
 SUPPORTED_DATA_TYPES = ['binary', 'gaussian']
-while i > 0:
+
 
 class StrNNDensityEstimator(StrNN):
     def __init__(self,
@@ -24,11 +21,11 @@ class StrNNDensityEstimator(StrNN):
                  adjacency: np.ndarray | None = None,
                  activation: str = 'relu',
                  data_type: str = 'binary',
-                 ian_init: bool = 'True'
+                 init: int = 1
                  ):
         super().__init__(
             nin, hidden_sizes, nout, opt_type, opt_args,
-            precomputed_masks, adjacency, activation, ian_init
+            precomputed_masks, adjacency, activation, init
         )
         assert data_type in SUPPORTED_DATA_TYPES
         self.data_type = data_type
@@ -96,5 +93,6 @@ if __name__ == '__main__':
         precomputed_masks=None,
         adjacency=A,
         activation='relu',
-        ian_init=True)
+        init=1
+    )
     print(model.A)

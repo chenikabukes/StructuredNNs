@@ -1,5 +1,5 @@
 from .models.strNN import StrNN
-from .models.strNNNormalised import StrNNNormalised
 from .models.strNN import MaskedLinear
+from .models.strNNDensityEstimator import StrNNClassifier
 
-__all__ = ["StrNN", "MaskedLinear", "StrNNNormalised"]
+__all__ = ["StrNN", "MaskedLinear", "StrNNClassifier"]
