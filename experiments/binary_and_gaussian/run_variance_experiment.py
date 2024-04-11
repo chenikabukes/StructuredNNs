@@ -10,8 +10,8 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from binary_gaussian_train_utils import train_loop, load_data_and_adj_mtx
-from strnn.models.strNNDensityEstimatorNormalisation import StrNNDensityEstimatorNormalisation
-from strnn.models.strNNBatchNorm import MaskedLinear
+from strnn.models.strNNDensityEstimator import StrNNDensityEstimator
+from strnn.models.strNN import MaskedLinear
 import wandb
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")

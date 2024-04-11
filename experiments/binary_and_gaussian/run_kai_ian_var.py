@@ -9,8 +9,8 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from binary_gaussian_train_utils import train_loop, load_data_and_adj_mtx
-from strnn.models.strNNDensityEstimatorNormalisation import StrNNDensityEstimatorNormalisation
-from strnn.models.strNNBatchNorm import MaskedLinear
+from strnn.models.strNNDensityEstimator import StrNNDensityEstimator
+from strnn.models.strNN import MaskedLinear
 import wandb
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -67,12 +67,12 @@ def main():
     data_type = "binary" if "binary" in dataset_name else "gaussian"
     output_size = input_size if data_type == "binary" else 2 * input_size
 
-    # run = wandb.init(project="strnn_init", entity="strnn-init", config=experiment_config, reinit=True)
+    run = wandb.init(project="strnn_init", entity="strnn-init", config=experiment_config, reinit=True)
 
     hidden_sizes = [h * input_size for h in hidden_size_mults[:6]]
     print(hidden_sizes)
 
-    model_ian = StrNNDensityEstimatorNormalisation(
+    model_ian = StrNNDensityEstimator(
         nin=input_size,
         hidden_sizes=hidden_sizes,
         nout=output_size,
@@ -82,10 +82,10 @@ def main():
         adjacency=adj_mtx,
         activation=experiment_config["activation"],
         data_type=data_type,
-        ian_init=True
+        init=1
     ).to(device)
 
-    model_kaiming = StrNNDensityEstimatorNormalisation(
+    model_kaiming = StrNNDensityEstimator(
         nin=input_size,
         hidden_sizes=hidden_sizes,
         nout=output_size,
@@ -95,36 +95,36 @@ def main():
         adjacency=adj_mtx,
         activation=experiment_config["activation"],
         data_type=data_type,
-        ian_init=False
+        init=2
     ).to(device)
 
     # Compute layer variances for both models
     variances_ian = compute_ian_layer_variances(model_ian)
     variances_kaiming = compute_kai_layer_variances(model_kaiming)
-    print(variances_ian)
-    print(variances_kaiming)
+    print("ian_variances", variances_ian)
+    print("kai_variances", variances_kaiming)
 
     # Expected variance for each layer
     expected_variances = [2 / h for h in [input_size] + hidden_sizes[:5]]
-    print(expected_variances)
+    print("expected kai variance", expected_variances)
 
-    # for layer_idx in range(5):
-    #     plt.figure(figsize=(5, 5))
-    #     plt.scatter(['Ian Init'], [variances_ian[layer_idx]], color='blue', label='Ian Init')
-    #     plt.scatter(['Kaiming Init'], [variances_kaiming[layer_idx]], color='green', label='Kaiming Init')
-    #     plt.scatter(['Expected Kaiming'], [expected_variances[layer_idx]], color='red', label='Expected Kaiming')
-    #     plt.ylabel('Variance')
-    #     plt.ylim(0, 0.025)
-    #     plt.title(f'Layer {layer_idx + 1} Variance Comparison')
-    #     plt.legend()
-    #     plt.grid(True)
-    #     plt.tight_layout()
-    #
-    #     plot_filename = f'layer_{layer_idx + 1}_variances.png'
-    #     plt.savefig(plot_filename)
-    #     plt.close()
-    #
-    #     wandb.log({f"Layer Variance Comparison": wandb.Image(plot_filename)})
+    for layer_idx in range(5):
+        plt.figure(figsize=(5, 5))
+        plt.scatter(['Ian Init'], [variances_ian[layer_idx]], color='blue', label='Ian Init')
+        plt.scatter(['Kaiming Init'], [variances_kaiming[layer_idx]], color='green', label='Kaiming Init')
+        plt.scatter(['Expected Kaiming'], [expected_variances[layer_idx]], color='red', label='Expected Kaiming')
+        plt.ylabel('Variance')
+        plt.ylim(0, 0.025)
+        plt.title(f'Layer {layer_idx + 1} Variance Comparison')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+
+        plot_filename = f'layer_{layer_idx + 1}_variances.png'
+        plt.savefig(plot_filename)
+        plt.close()
+
+        wandb.log({f"Layer Variance Comparison": wandb.Image(plot_filename)})
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import tensorflow_datasets as tfds
 # Data should be numpy arrays of shape [number of data points, data dimensions]
 
 NUM_TEST_SAMPLES = 500
-RANDOM_THRESHOLD = {'fullyconnected': 0.0, 'dense': 0.4, 'medium': 0.6, 'sparse': 0.9, 'verysparse': 0.95}
+RANDOM_THRESHOLD = {'fullyconnected': 0.0, 'middense': 0.2, 'dense': 0.4, 'medium': 0.6, 'mediumsparse': 0.75, 'sparse': 0.9, 'verysparse': 0.95}
 
 
 class DataGenerator():
@@ -64,37 +64,6 @@ class DataGenerator():
                         if (i - j) % 2 == 0:
                             A[i][j] = 0
             return A
-        # elif 'random' in adj_type:
-        #     _, random_type = adj_type.split('_')
-        #     assert random_type in RANDOM_THRESHOLD
-        #     threshold = RANDOM_THRESHOLD[random_type]
-        #
-        #     attempt_num = 0
-        #     while True:
-        #         # Parse adj_type for how many entries to randomly zero out
-        #
-        #         # Initialize randomly
-        #         print(f"Adj mtx generation attempt {attempt_num}:")
-        #         A = np.random.standard_normal((d, d))
-        #         # Threshold and make lower triangular
-        #         for i in range(len(A)):
-        #             for j in range(len(A[0])):
-        #                 if A[i][j] > -1 * threshold and A[i][j] < threshold:
-        #                     A[i][j] = 0
-        #                 else:
-        #                     A[i][j] = 1
-        #         A = np.tril(A, -1)
-        #
-        #         # Check each node has dependencies
-        #         sums = A.sum(axis=1)
-        #         has_empty_row = False
-        #         for sum in sums[1:]:
-        #             if sum == 0:
-        #                 has_empty_row = True
-        #         if has_empty_row:
-        #             print("Attempt failed; retry ...")
-        #             attempt_num += 1
-        #             continue
         elif 'random' in adj_type:
             _, random_type = adj_type.split('_')
             assert random_type in RANDOM_THRESHOLD
@@ -199,6 +168,7 @@ class DataGenerator():
         target_dir = os.path.join(current_dir, 'synth_data_files')
         os.makedirs(target_dir, exist_ok=True)
         file_path = os.path.join(target_dir, f"{data_type}_{adj_type}_d{str(data_dim)}_n{str(num_samples)}.npz")
+        print(f"Saving data to: {file_path}")
         np.savez(
             file_path,
             train_data=self.train_data,
@@ -307,11 +277,12 @@ if __name__ == '__main__':
     gen = DataGenerator()
     adj_type = 'full_ones'
     data_dim = 100
-    # very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
-    # np.savez(f"./synth_data_files/full_ones_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
-    autoregressive_adj_mtx = gen.create_adjacency(d=data_dim, adj_type='full_auto')
-    np.savez(f"./synth_data_files/full_auto_adj_mtx_{data_dim}.npz", A=autoregressive_adj_mtx)
-    fully_connected_adj_mtx = gen.create_adjacency(d=data_dim, adj_type='full_ones')
-    np.savez(f"./synth_data_files/fully_connected_adj_mtx_{data_dim}.npz", A=fully_connected_adj_mtx)
+    very_sparse_adj_mtx = gen.create_adjacency(d=data_dim, adj_type=adj_type)
+    np.savez(f"./synth_data_files/full_ones_adj_mtx_{data_dim}.npz", A=very_sparse_adj_mtx)
+    autoregressive_adj_mtx = gen.create_adjacency(d=data_dim, adj_type='random_middense')
+    np.savez(f"./synth_data_files/mid_dense_adj_mtx_{data_dim}.npz", A=autoregressive_adj_mtx)
+    fully_connected_adj_mtx = gen.create_adjacency(d=data_dim, adj_type='random_mediumsparse')
+    np.savez(f"./synth_data_files/medium_sparse_adj_mtx_{data_dim}.npz", A=fully_connected_adj_mtx)
     sample_sizes = (2000, 1000)
-    gen.generate_data_group(data_type='binary', adj_type=adj_type, data_dim=data_dim, sample_sizes=sample_sizes)
+    gen.generate_data_group(data_type='binary', adj_type='random_middense', data_dim=data_dim, sample_sizes=sample_sizes)
+    gen.generate_data_group(data_type='binary', adj_type='random_mediumsparse', data_dim=data_dim, sample_sizes=sample_sizes)
