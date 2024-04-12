@@ -38,10 +38,11 @@ def load_data(dataset_name='CiteSeer', transform=NormalizeFeatures()):
     adj_matrix = torch.zeros((num_nodes, num_nodes), dtype=torch.float, device=device)
     adj_matrix[edge_index[0], edge_index[1]] = 1
 
+    adj_matrix_numpy = adj_matrix_torch.cpu().numpy()
     num_features = dataset.num_node_features
     num_classes = dataset.num_classes
 
-    return data, adj_matrix, num_features, num_classes
+    return data, adj_matrix_numpy, num_features, num_classes
 
 
 def train_model(model, train_data, optimizer, criterion):

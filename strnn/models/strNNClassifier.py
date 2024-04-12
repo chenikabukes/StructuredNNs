@@ -10,7 +10,7 @@ from strnn.models.model_utils import NONLINEARITIES
 SUPPORTED_DATA_TYPES = ['binary', 'gaussian']
 
 
-class StrNNClassifier(strNN):
+class StrNNClassifier(StrNN):
     def __init__(self, num_features, num_classes, hidden_sizes, adjacency_matrix, init_type, activation='relu'):
         # Initialize the StrNN with nin = nout to maintain the autoregressive property
         super().__init__(

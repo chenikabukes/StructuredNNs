@@ -3,9 +3,9 @@ import yaml
 import torch
 from torch.utils.data import DataLoader
 import wandb
+import sys
 
-from strnn.models.strNNDensityEstimator import StrNNDensityEstimator
-from ..strnn.models.strNNClassifier import StrNNClassifier
+from strnn.models.strNNClassifier import StrNNClassifier
 from citeseer_classification_train_utils import load_data
 from citeseer_classification_train_utils import train_model, evaluate_model
 
@@ -27,11 +27,12 @@ def main():
     wandb.init(project=args.wandb_name, name=args.experiment_name, config=experiment_config)
 
     data, adj_matrix, num_features, num_classes = load_data()
-    model_params = experiment_config['model_params']
-    hidden_sizes = [model_params[f"hidden_size_multiplier_{i}"] * num_features for i in
-                    range(1, model_params["num_hidden_layers"] + 1)]
+
+    hidden_size_mults = [experiment_config[f"hidden_size_multiplier_{i}"] for i in range(1, 6)]
+    hidden_sizes = [h * num_features for h in hidden_size_mults[:experiment_config["num_hidden_layers"]]]
+
     model = StrNNClassifier(num_features, num_classes, hidden_sizes, adj_matrix, init_type=1,
-                            activation=model_params["activation"]).to(device)
+                            activation=experiment_config["activation"]).to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=experiment_config['learning_rate'])
     criterion = torch.nn.CrossEntropyLoss()

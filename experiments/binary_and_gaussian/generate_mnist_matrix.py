@@ -546,7 +546,7 @@ if __name__ == '__main__':
         # print(f"Time elapsed: {(end_time - start_time).total_seconds(): .16f}")
 
         # Generate adjacency matrices for MNIST
-        for nbr_size in [15]:
+        for nbr_size in [10, 12, 15, 18, 20]:
             A = obtain_adjacency_neighbors(shp=28, nbr_size=nbr_size)
             np.savez(f'./synth_data_files/mnist/28_nbr{nbr_size}_adj', A)
 

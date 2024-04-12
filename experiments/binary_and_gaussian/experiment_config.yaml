@@ -500,6 +500,10 @@ citeseer_strnn_experiment: &citeseer_strnn_experiment
   hidden_size_multiplier_1: 2
   hidden_size_multiplier_2: 2
   hidden_size_multiplier_3: 2
+  hidden_size_multiplier_4: 2
+  hidden_size_multiplier_5: 2
+  hidden_size_multiplier_6: 2
+  hidden_size_multiplier_7: 2
   num_hidden_layers: 3
   learning_rate: 0.01
   weight_decay: 5e-4
